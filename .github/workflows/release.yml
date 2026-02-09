@@ -1,0 +1,164 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.id }}
+      upload_url: ${{ steps.create-release.outputs.upload_url }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Get version from tag
+        id: tag_name
+        run: echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  build-tauri:
+    name: Build Tauri App
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, ubuntu-latest]
+    
+    runs-on: ${{ matrix.platform }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Telethon dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install telethon pyinstaller cryptg
+      
+      - name: Build Telethon worker (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          cd telethon-worker
+          powershell -ExecutionPolicy Bypass -File build-telethon.ps1 -Output dist -Clean
+      
+      - name: Build Telethon worker (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          cd telethon-worker
+          chmod +x build-telethon.sh
+          ./build-telethon.sh --output dist --clean
+      
+      - name: Install frontend dependencies
+        run: npm ci
+      
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+
+  build-portable:
+    name: Build Portable Packages
+    needs: create-release
+    strategy:
+      matrix:
+        platform: [windows-latest, ubuntu-latest]
+    
+    runs-on: ${{ matrix.platform }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Telethon dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install telethon pyinstaller cryptg
+      
+      - name: Build portable (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          npm ci
+          npm run release:portable
+      
+      - name: Build portable (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          npm ci
+          npm run release:portable
+      
+      - name: Upload portable artifacts (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist-release/Q-Manager-*-portable-win-x64.zip
+          asset_name: Q-Manager-portable-win-x64.zip
+          asset_content_type: application/zip
+      
+      - name: Upload portable artifacts (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist-release/Q-Manager-*-portable-linux-x64.tar.gz
+          asset_name: Q-Manager-portable-linux-x64.tar.gz
+          asset_content_type: application/gzip
