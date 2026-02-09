@@ -5,10 +5,15 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       release_id: ${{ steps.create-release.outputs.id }}
       upload_url: ${{ steps.create-release.outputs.upload_url }}
@@ -34,6 +39,8 @@ jobs:
   build-tauri:
     name: Build Tauri App
     needs: create-release
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +102,8 @@ jobs:
   build-portable:
     name: Build Portable Packages
     needs: create-release
+    permissions:
+      contents: write
     strategy:
       matrix:
         platform: [windows-latest, ubuntu-latest]
