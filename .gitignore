@@ -1,0 +1,51 @@
+node_modules/
+node_modules
+.vscode/
+.DS_Store
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.orig
+*.tgz
+*.zip
+*.exe
+*.msi
+*.pdb
+*.dll
+*.dylib
+*.so
+*.app
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.tar.gz
+*.tar
+*.7z
+*.rar
+*.pkg
+*.dmg
+# Tauri build artifacts
+src-tauri/target/
+# Telethon worker build outputs
+telethon-worker/dist/
+# Release outputs
+/dist-release/
+# Rust
+**/target/
+**/*.rlib
+**/*.rmeta
+# Test artifacts
+coverage/
+# Logs
+logs/
+# Environment files
+.env
+.env.*
+# Local DB/sessions
+sessions/
+*.sqlite
+*.sqlite3

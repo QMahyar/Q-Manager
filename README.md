@@ -1,0 +1,103 @@
+# Q Manager
+
+Q Manager is a cross-platform desktop app for automating Werewolf game interactions on Telegram.
+It manages multiple accounts, detects game phases, and executes actions based on configurable patterns and targets.
+The app combines a React + Vite frontend with a Rust + Tauri backend and a Telethon worker for Telegram connectivity.
+
+## Tech stack
+
+- Frontend: React + Vite + TypeScript + shadcn/ui
+- Backend: Rust + Tauri 2 + tokio + rusqlite
+- Telegram: Telethon worker (Python)
+- Events: Tauri IPC (`invoke`) + backend events for realtime updates
+
+## Purpose
+
+Q Manager helps Werewolf moderators and players automate common Telegram game workflows: joining games, responding to prompts, and selecting targets.
+It is designed for multi-account operation with configurable rules and safe rate limits.
+
+## Key features (v1)
+
+- Multi-account management with start/stop and batch operations
+- Telethon login wizard (phone → code → 2FA)
+- Phase detection and action trigger patterns
+- Per-account targets, blacklist, and delay overrides
+- Two-step actions (Cupid) with pair selection logic
+- Diagnostics snapshot (uptime + worker counts) for health checks
+- System tray controls (show/hide, start/stop per account)
+
+## Project structure
+
+- `src/`: React UI (pages, components, hooks)
+- `src-tauri/src/`: Rust backend (commands, db, workers)
+- `src-tauri/src/db/`: SQLite schema + operations
+- `src-tauri/src/workers/`: account worker + detection pipeline
+- `telethon-worker/`: Python Telethon worker (bundled alongside the app)
+
+## Usage
+
+1) Launch the app
+2) Add accounts via the login wizard (phone → code → 2FA)
+3) Configure phase patterns and actions
+4) Configure targets per account
+5) Start accounts and monitor Activity Feed
+
+## Development
+
+For GitHub releases: create a `v1.0.0` tag and a GitHub Release named `v1.0.0`. Attach installers when available.
+
+
+```bash
+# UI + Tauri dev
+npm run tauri dev
+
+# Build
+npm run tauri build
+```
+
+## Testing
+
+```bash
+# Rust checks
+cargo check
+
+# Tests (Linux/macOS)
+cargo test
+```
+
+> On Windows, GUI-linked tests can fail due to system DLL entrypoints. Use `cargo check` instead.
+
+## Windows prerequisites
+
+- WebView2 Runtime
+- Microsoft Visual C++ Redistributable (x64)
+
+## Release
+
+Current version: **1.0.0**.
+
+Release assets are generated in `dist-release/` (installer + portable zip).
+
+## Release scripts
+
+```bash
+npm run release
+npm run release:win
+npm run release:linux
+npm run release:portable
+npm run release:installer
+```
+
+## Author
+
+Mahyar (Telegram: @qmahyar)
+
+## Prerequisites
+
+- Node.js 18+
+- Rust toolchain (1.70+)
+- Telethon worker built via `telethon-worker/build-telethon.{ps1,sh}` and copied by `src-tauri/build.rs`
+
+## IDE setup
+
+- VS Code + Tauri extension + rust-analyzer

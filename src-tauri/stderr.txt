@@ -1,0 +1,453 @@
+warning: unused import: `tokio::sync::mpsc`
+ --> src\tdlib\session.rs:8:5
+  |
+8 | use tokio::sync::mpsc;
+  |     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Symbol`
+ --> src\tdlib\mod.rs:9:27
+  |
+9 | use libloading::{Library, Symbol};
+  |                           ^^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> src\workers\account_worker.rs:6:5
+  |
+6 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `mpsc` and `oneshot`
+ --> src\workers\account_worker.rs:8:19
+  |
+8 | use tokio::sync::{mpsc, oneshot};
+  |                   ^^^^  ^^^^^^^
+
+warning: unused import: `emit_log`
+  --> src\workers\account_worker.rs:12:104
+   |
+12 | use crate::events::{emit_account_status, emit_phase_detected, emit_action_detected, emit_join_attempt, emit_log};
+   |                                                                                                        ^^^^^^^^
+
+warning: unused import: `account_worker::AccountWorker`
+  --> src\workers\mod.rs:12:9
+   |
+12 | pub use account_worker::AccountWorker;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `detection::DetectionPipeline`
+  --> src\workers\mod.rs:13:9
+   |
+13 | pub use detection::DetectionPipeline;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `action_id`
+   --> src\workers\account_worker.rs:465:34
+    |
+465 |     fn get_delay_settings(&self, action_id: i64) -> (i32, i32) {
+    |                                  ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_action_id`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `action_id`
+   --> src\workers\account_worker.rs:472:31
+    |
+472 |     fn get_target_list(&self, action_id: i64) -> Vec<String> {
+    |                               ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_action_id`
+
+warning: unused variable: `action_id`
+   --> src\workers\account_worker.rs:478:29
+    |
+478 |     fn get_blacklist(&self, action_id: i64) -> Vec<String> {
+    |                             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_action_id`
+
+warning: unused variable: `action_id`
+   --> src\workers\account_worker.rs:484:42
+    |
+484 |     fn is_random_fallback_enabled(&self, action_id: i64) -> bool {
+    |                                          ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_action_id`
+
+warning: function `list_all_action_patterns` is never used
+   --> src\db\operations.rs:375:8
+    |
+375 | pub fn list_all_action_patterns(conn: &Connection) -> Result<Vec<ActionPattern>> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `execute` is never read
+  --> src\tdlib\mod.rs:33:5
+   |
+27 | pub struct TdLib {
+   |            ----- field in this struct
+...
+33 |     execute: TdJsonClientExecute,
+   |     ^^^^^^^
+
+warning: method `execute` is never used
+   --> src\tdlib\mod.rs:111:12
+    |
+ 40 | impl TdLib {
+    | ---------- method in this implementation
+...
+111 |     pub fn execute(&self, client: *mut c_void, request: &str) -> Option<String> {
+    |            ^^^^^^^
+
+warning: methods `execute` and `request` are never used
+   --> src\tdlib\mod.rs:191:12
+    |
+169 | impl TdClient {
+    | ------------- methods in this implementation
+...
+191 |     pub fn execute(&self, request: &str) -> Result<Option<String>, String> {
+    |            ^^^^^^^
+...
+197 |     pub fn request<T: Serialize>(&self, request: &T) -> Result<(), String> {
+    |            ^^^^^^^
+
+warning: struct `SetTdlibParameters` is never constructed
+   --> src\tdlib\mod.rs:225:12
+    |
+225 | pub struct SetTdlibParameters {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: associated function `new` is never used
+   --> src\tdlib\mod.rs:239:12
+    |
+238 | impl SetTdlibParameters {
+    | ----------------------- associated function in this implementation
+239 |     pub fn new(database_dir: String, api_id: i64, api_hash: String) -> Self {
+    |            ^^^
+
+warning: struct `SetAuthenticationPhoneNumber` is never constructed
+   --> src\tdlib\mod.rs:255:12
+    |
+255 | pub struct SetAuthenticationPhoneNumber {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated function `new` is never used
+   --> src\tdlib\mod.rs:262:12
+    |
+261 | impl SetAuthenticationPhoneNumber {
+    | --------------------------------- associated function in this implementation
+262 |     pub fn new(phone: String) -> Self {
+    |            ^^^
+
+warning: struct `CheckAuthenticationCode` is never constructed
+   --> src\tdlib\mod.rs:271:12
+    |
+271 | pub struct CheckAuthenticationCode {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated function `new` is never used
+   --> src\tdlib\mod.rs:278:12
+    |
+277 | impl CheckAuthenticationCode {
+    | ---------------------------- associated function in this implementation
+278 |     pub fn new(code: String) -> Self {
+    |            ^^^
+
+warning: struct `CheckAuthenticationPassword` is never constructed
+   --> src\tdlib\mod.rs:287:12
+    |
+287 | pub struct CheckAuthenticationPassword {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated function `new` is never used
+   --> src\tdlib\mod.rs:294:12
+    |
+293 | impl CheckAuthenticationPassword {
+    | -------------------------------- associated function in this implementation
+294 |     pub fn new(password: String) -> Self {
+    |            ^^^
+
+warning: struct `AuthorizationState` is never constructed
+   --> src\tdlib\mod.rs:303:12
+    |
+303 | pub struct AuthorizationState {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: struct `UpdateAuthorizationState` is never constructed
+   --> src\tdlib\mod.rs:309:12
+    |
+309 | pub struct UpdateAuthorizationState {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `TdMessage` is never constructed
+  --> src\tdlib\session.rs:18:12
+   |
+18 | pub struct TdMessage {
+   |            ^^^^^^^^^
+
+warning: struct `TdReplyMarkup` is never constructed
+  --> src\tdlib\session.rs:29:12
+   |
+29 | pub struct TdReplyMarkup {
+   |            ^^^^^^^^^^^^^
+
+warning: struct `TdButton` is never constructed
+  --> src\tdlib\session.rs:35:12
+   |
+35 | pub struct TdButton {
+   |            ^^^^^^^^
+
+warning: enum `TdButtonType` is never used
+  --> src\tdlib\session.rs:42:10
+   |
+42 | pub enum TdButtonType {
+   |          ^^^^^^^^^^^^
+
+warning: enum `TdEvent` is never used
+  --> src\tdlib\session.rs:50:10
+   |
+50 | pub enum TdEvent {
+   |          ^^^^^^^
+
+warning: struct `TdSession` is never constructed
+  --> src\tdlib\session.rs:68:12
+   |
+68 | pub struct TdSession {
+   |            ^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\tdlib\session.rs:78:12
+    |
+ 76 | impl TdSession {
+    | -------------- associated items in this implementation
+ 77 |     /// Create a new session (client must already be authenticated)
+ 78 |     pub fn new(api_id: i64, api_hash: String, session_dir: PathBuf) -> Result<Self, String> {
+    |            ^^^
+...
+ 95 |     pub fn initialize(&self) -> Result<(), String> {
+    |            ^^^^^^^^^^
+...
+112 |     pub fn wait_for_ready(&self, timeout_seconds: u32) -> Result<bool, String> {
+    |            ^^^^^^^^^^^^^^
+...
+132 |     pub fn receive_update(&self, timeout: f64) -> Result<Option<Value>, String> {
+    |            ^^^^^^^^^^^^^^
+...
+144 |     pub fn parse_update(&self, update: &Value) -> Option<TdEvent> {
+    |            ^^^^^^^^^^^^
+...
+190 |     fn parse_message(&self, message: &Value) -> Option<TdMessage> {
+    |        ^^^^^^^^^^^^^
+...
+224 |     fn parse_reply_markup(&self, markup: &Value) -> Option<TdReplyMarkup> {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+249 |     fn parse_button(&self, button: &Value) -> Option<TdButton> {
+    |        ^^^^^^^^^^^^
+...
+276 |     pub fn click_button(&self, chat_id: i64, message_id: i64, data: &[u8]) -> Result<(), String> {
+    |            ^^^^^^^^^^^^
+...
+294 |     pub fn send_message(&self, chat_id: i64, text: &str) -> Result<(), String> {
+    |            ^^^^^^^^^^^^
+...
+311 |     pub fn send_bot_start(&self, bot_user_id: i64, parameter: &str) -> Result<(), String> {
+    |            ^^^^^^^^^^^^^^
+...
+346 |     pub fn get_chat(&self, chat_id: i64) -> Result<(), String> {
+    |            ^^^^^^^^
+...
+356 |     pub fn close(&self) -> Result<(), String> {
+    |            ^^^^^
+
+warning: function `base64_encode` is never used
+   --> src\tdlib\session.rs:366:4
+    |
+366 | fn base64_encode(data: &[u8]) -> String {
+    |    ^^^^^^^^^^^^^
+
+warning: enum `WorkerState` is never used
+  --> src\workers\account_worker.rs:18:10
+   |
+18 | pub enum WorkerState {
+   |          ^^^^^^^^^^^
+
+warning: enum `WorkerCommand` is never used
+  --> src\workers\account_worker.rs:28:10
+   |
+28 | pub enum WorkerCommand {
+   |          ^^^^^^^^^^^^^
+
+warning: struct `WorkerConfig` is never constructed
+  --> src\workers\account_worker.rs:34:12
+   |
+34 | pub struct WorkerConfig {
+   |            ^^^^^^^^^^^^
+
+warning: struct `AccountWorker` is never constructed
+  --> src\workers\account_worker.rs:47:12
+   |
+47 | pub struct AccountWorker {
+   |            ^^^^^^^^^^^^^
+
+warning: struct `GameState` is never constructed
+  --> src\workers\account_worker.rs:63:12
+   |
+63 | pub struct GameState {
+   |            ^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src\workers\account_worker.rs:71:12
+    |
+ 69 | impl AccountWorker {
+    | ------------------ associated items in this implementation
+ 70 |     /// Create a new account worker
+ 71 |     pub fn new(config: WorkerConfig) -> Self {
+    |            ^^^
+...
+ 84 |     pub fn config_from_account(account: &Account, settings: &Settings, session_dir: PathBuf) -> WorkerConfig {
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+118 |     pub fn account_id(&self) -> i64 {
+    |            ^^^^^^^^^^
+...
+123 |     pub fn state(&self) -> &WorkerState {
+    |            ^^^^^
+...
+128 |     pub async fn start(&mut self) -> Result<(), String> {
+    |                  ^^^^^
+...
+165 |     pub async fn stop(&mut self) -> Result<(), String> {
+    |                  ^^^^
+...
+189 |     fn load_detection_patterns(&mut self) -> Result<(), String> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+...
+201 |     pub async fn run_loop(&mut self) -> Result<(), String> {
+    |                  ^^^^^^^^
+...
+231 |     async fn handle_td_event(&mut self, event: TdEvent) -> Result<(), String> {
+    |              ^^^^^^^^^^^^^^^
+...
+255 |     async fn handle_message(&mut self, message: TdMessage) -> Result<(), String> {
+    |              ^^^^^^^^^^^^^^
+...
+297 |     fn td_message_to_event(&self, message: &TdMessage) -> MessageEvent {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+333 |     async fn handle_phase(&mut self, phase_name: &str, message: &TdMessage) -> Result<(), String> {
+    |              ^^^^^^^^^^^^
+...
+364 |     fn can_attempt_join(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^^
+...
+380 |     async fn handle_action(
+    |              ^^^^^^^^^^^^^
+...
+418 |     fn select_target_button(&self, action_id: i64, message: &TdMessage) -> Result<Option<(TdButton, i32)>, String> {
+    |        ^^^^^^^^^^^^^^^^^^^^
+...
+465 |     fn get_delay_settings(&self, action_id: i64) -> (i32, i32) {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+472 |     fn get_target_list(&self, action_id: i64) -> Vec<String> {
+    |        ^^^^^^^^^^^^^^^
+...
+478 |     fn get_blacklist(&self, action_id: i64) -> Vec<String> {
+    |        ^^^^^^^^^^^^^
+...
+484 |     fn is_random_fallback_enabled(&self, action_id: i64) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+490 |     async fn click_button(&self, chat_id: i64, message_id: i64, button: &TdButton) -> Result<(), String> {
+    |              ^^^^^^^^^^^^
+...
+516 |     async fn attempt_join(&mut self, message: &TdMessage) -> Result<(), String> {
+    |              ^^^^^^^^^^^^
+...
+557 |     fn reset_game_state(&mut self) {
+    |        ^^^^^^^^^^^^^^^^
+
+warning: function `parse_start_parameter` is never used
+   --> src\workers\account_worker.rs:565:4
+    |
+565 | fn parse_start_parameter(url: &str) -> Option<String> {
+    |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: static `REGEX_CACHE` is never used
+  --> src\workers\detection.rs:13:8
+   |
+13 | static REGEX_CACHE: Lazy<std::sync::Mutex<HashMap<String, Regex>>> = 
+   |        ^^^^^^^^^^^
+
+warning: function `get_regex` is never used
+  --> src\workers\detection.rs:17:4
+   |
+17 | fn get_regex(pattern: &str) -> Result<Regex, String> {
+   |    ^^^^^^^^^
+
+warning: struct `MessageEvent` is never constructed
+  --> src\workers\detection.rs:29:12
+   |
+29 | pub struct MessageEvent {
+   |            ^^^^^^^^^^^^
+
+warning: struct `InlineButton` is never constructed
+  --> src\workers\detection.rs:39:12
+   |
+39 | pub struct InlineButton {
+   |            ^^^^^^^^^^^^
+
+warning: enum `DetectionResult` is never used
+  --> src\workers\detection.rs:47:10
+   |
+47 | pub enum DetectionResult {
+   |          ^^^^^^^^^^^^^^^
+
+warning: struct `DetectionPipeline` is never constructed
+  --> src\workers\detection.rs:63:12
+   |
+63 | pub struct DetectionPipeline {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: struct `CompiledPattern` is never constructed
+  --> src\workers\detection.rs:68:8
+   |
+68 | struct CompiledPattern {
+   |        ^^^^^^^^^^^^^^^
+
+warning: struct `CompiledActionPattern` is never constructed
+  --> src\workers\detection.rs:77:8
+   |
+77 | struct CompiledActionPattern {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated items `new`, `load_phase_patterns`, `load_action_patterns`, `process`, and `matches` are never used
+   --> src\workers\detection.rs:89:12
+    |
+ 87 | impl DetectionPipeline {
+    | ---------------------- associated items in this implementation
+ 88 |     /// Create a new detection pipeline
+ 89 |     pub fn new() -> Self {
+    |            ^^^
+...
+ 97 |     pub fn load_phase_patterns(&mut self, patterns: Vec<(PhasePattern, String, i32)>) {
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+119 |     pub fn load_action_patterns(&mut self, actions: Vec<Action>, patterns: Vec<crate::db::ActionPattern>) {
+    |            ^^^^^^^^^^^^^^^^^^^^
+...
+143 |     pub fn process(&self, event: &MessageEvent) -> Vec<DetectionResult> {
+    |            ^^^^^^^
+...
+189 |     fn matches(&self, text: &str, pattern: &str, is_regex: bool) -> bool {
+    |        ^^^^^^^
+
+warning: `q-manager` (lib) generated 49 warnings (run `cargo fix --lib -p q-manager` to apply 7 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.61s
+     Running `target\debug\q-manager.exe`
+[2026-01-08T12:17:09Z INFO  q_manager_lib] Starting Q Manager...
+[2026-01-08T12:17:09Z INFO  q_manager_lib::tdlib] TDLib: Searching at path "H:\\AI code\\Project root\\sonnet 4.5\\q-manager\\src-tauri\\target\\debug\\tdlib\\tdjson.dll"
+[2026-01-08T12:17:09Z INFO  q_manager_lib::tdlib] TDLib: Path exists: true
+[2026-01-08T12:17:09Z INFO  q_manager_lib::tdlib] TDLib: Loading library...
+[2026-01-08T12:17:09Z INFO  q_manager_lib::tdlib] TdLib::load - Opening library at "H:\\AI code\\Project root\\sonnet 4.5\\q-manager\\src-tauri\\target\\debug\\tdlib\\tdjson.dll"
+[2026-01-08T12:17:09Z INFO  q_manager_lib::tdlib] TDLib: Library loaded successfully
+[2026-01-08T12:17:09Z INFO  q_manager_lib::tdlib] TDLib: Initialization complete
+[2026-01-08T12:17:09Z INFO  q_manager_lib] TDLib initialized successfully
+[2026-01-08T12:17:09Z INFO  q_manager_lib::tray] System tray initialized
+error: process didn't exit successfully: `target\debug\q-manager.exe` (exit code: 0xffffffff)
