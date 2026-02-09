@@ -1,11 +1,11 @@
 //! Phase commands
 
+use crate::commands::{error_response, CommandResult};
 use crate::db::{self, Phase, PhasePattern, PhasePatternCreate};
 use crate::validation::{validate_pattern, validate_priority};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use tauri::command;
-use crate::commands::{CommandResult, error_response};
 
 /// Phase pattern update payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,10 +34,10 @@ pub fn phase_pattern_create(payload: PhasePatternCreate) -> CommandResult<PhaseP
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;
     validate_priority(payload.priority).map_err(error_response)?;
-    
+
     let conn = db::get_conn().map_err(error_response)?;
     let id = db::create_phase_pattern(&conn, &payload).map_err(error_response)?;
-    
+
     Ok(PhasePattern {
         id,
         phase_id: payload.phase_id,
@@ -58,10 +58,11 @@ pub fn phase_pattern_delete(pattern_id: i64) -> CommandResult<()> {
 pub fn phase_update_priority(phase_id: i64, priority: i32) -> CommandResult<Phase> {
     let conn = db::get_conn().map_err(error_response)?;
     db::update_phase_priority(&conn, phase_id, priority).map_err(error_response)?;
-    
+
     // Return the updated phase
     let phases = db::list_phases(&conn).map_err(error_response)?;
-    phases.into_iter()
+    phases
+        .into_iter()
         .find(|p| p.id == phase_id)
         .ok_or_else(|| error_response("Phase not found"))
 }
@@ -71,16 +72,18 @@ pub fn phase_pattern_update(payload: PhasePatternUpdate) -> CommandResult<PhaseP
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;
     validate_priority(payload.priority).map_err(error_response)?;
-    
+
     let conn = db::get_conn().map_err(error_response)?;
-    
+
     // Get the phase_id for the pattern
-    let phase_id: i64 = conn.query_row(
-        "SELECT phase_id FROM phase_patterns WHERE id = ?1",
-        params![payload.id],
-        |row| row.get(0)
-    ).map_err(error_response)?;
-    
+    let phase_id: i64 = conn
+        .query_row(
+            "SELECT phase_id FROM phase_patterns WHERE id = ?1",
+            params![payload.id],
+            |row| row.get(0),
+        )
+        .map_err(error_response)?;
+
     // Update the pattern
     conn.execute(
         "UPDATE phase_patterns SET pattern = ?1, is_regex = ?2, enabled = ?3, priority = ?4 WHERE id = ?5",
@@ -92,7 +95,7 @@ pub fn phase_pattern_update(payload: PhasePatternUpdate) -> CommandResult<PhaseP
             payload.id
         ],
     ).map_err(error_response)?;
-    
+
     Ok(PhasePattern {
         id: payload.id,
         phase_id,
@@ -107,12 +110,18 @@ pub fn phase_pattern_update(payload: PhasePatternUpdate) -> CommandResult<PhaseP
 #[command]
 pub async fn patterns_reload_all() -> CommandResult<()> {
     use crate::workers::WORKER_MANAGER;
-    WORKER_MANAGER.reload_all_patterns().await.map_err(error_response)
+    WORKER_MANAGER
+        .reload_all_patterns()
+        .await
+        .map_err(error_response)
 }
 
 /// Reload detection patterns for a specific running worker
 #[command]
 pub async fn patterns_reload(account_id: i64) -> CommandResult<()> {
     use crate::workers::WORKER_MANAGER;
-    WORKER_MANAGER.reload_patterns(account_id).await.map_err(error_response)
+    WORKER_MANAGER
+        .reload_patterns(account_id)
+        .await
+        .map_err(error_response)
 }

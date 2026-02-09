@@ -1,18 +1,18 @@
 //! Database module for Q Manager
 //! Handles SQLite database initialization and operations with connection pooling.
 
-mod schema;
 mod operations;
+mod schema;
 
 #[cfg(test)]
 mod operations_tests;
 
-pub use schema::init_db;
 pub use operations::*;
+pub use schema::init_db;
 
+use once_cell::sync::Lazy;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use once_cell::sync::Lazy;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -29,22 +29,21 @@ const POOL_CONNECTION_TIMEOUT_SECS: u64 = 30;
 pub static DB_POOL: Lazy<DbPool> = Lazy::new(|| {
     let db_path = get_db_path();
     log::info!("Initializing database at: {:?}", db_path);
-    
-    let manager = SqliteConnectionManager::file(&db_path)
-        .with_init(|conn| {
-            // Enable WAL mode for better concurrency
-            conn.execute_batch(
-                "PRAGMA journal_mode = WAL;
+
+    let manager = SqliteConnectionManager::file(&db_path).with_init(|conn| {
+        // Enable WAL mode for better concurrency
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
                  PRAGMA synchronous = NORMAL;
                  PRAGMA foreign_keys = ON;
                  PRAGMA cache_size = -64000;
                  PRAGMA temp_store = MEMORY;
                  PRAGMA mmap_size = 268435456;
-                 PRAGMA busy_timeout = 5000;"
-            )?;
-            Ok(())
-        });
-    
+                 PRAGMA busy_timeout = 5000;",
+        )?;
+        Ok(())
+    });
+
     let pool = Pool::builder()
         .max_size(POOL_SIZE)
         .min_idle(Some(POOL_MIN_IDLE))
@@ -56,7 +55,7 @@ pub static DB_POOL: Lazy<DbPool> = Lazy::new(|| {
             log::error!("This is a critical error. The application cannot continue.");
             panic!("Failed to create database pool: {}. Check logs and ensure database directory is writable.", e);
         });
-    
+
     // Initialize schema on first connection
     {
         let conn = pool.get().unwrap_or_else(|e| {
@@ -64,15 +63,21 @@ pub static DB_POOL: Lazy<DbPool> = Lazy::new(|| {
             log::error!("This usually means the database file is locked or corrupted.");
             panic!("Failed to get initial database connection: {}. Try closing other instances or deleting the database.", e);
         });
-        
+
         init_db(&conn).unwrap_or_else(|e| {
             log::error!("FATAL: Failed to initialize database schema: {}", e);
             log::error!("The database might be corrupted. Consider deleting it and restarting.");
-            panic!("Failed to initialize database schema: {}. Database may be corrupted.", e);
+            panic!(
+                "Failed to initialize database schema: {}. Database may be corrupted.",
+                e
+            );
         });
     }
-    
-    log::info!("Database pool initialized with {} max connections", POOL_SIZE);
+
+    log::info!(
+        "Database pool initialized with {} max connections",
+        POOL_SIZE
+    );
     pool
 });
 
@@ -87,7 +92,7 @@ fn get_db_path() -> PathBuf {
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
-    
+
     let db_dir = exe_dir.join("db");
     std::fs::create_dir_all(&db_dir).ok();
     db_dir.join("app.sqlite")

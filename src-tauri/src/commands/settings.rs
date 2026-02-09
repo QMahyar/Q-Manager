@@ -1,9 +1,11 @@
 //! Settings commands
 
+use crate::commands::{error_response, CommandResult};
 use crate::db::{self, Settings, SettingsUpdate};
-use crate::validation::{validate_api_id, validate_api_hash, validate_join_rules, validate_bot_user_id};
+use crate::validation::{
+    validate_api_hash, validate_api_id, validate_bot_user_id, validate_join_rules,
+};
 use tauri::command;
-use crate::commands::{CommandResult, error_response};
 
 #[command]
 pub fn settings_get() -> CommandResult<Settings> {
@@ -22,9 +24,12 @@ pub fn settings_update(payload: SettingsUpdate) -> CommandResult<Settings> {
             validate_api_hash(api_hash).map_err(error_response)?;
         }
     }
-    
+
     // Validate join rules if provided
-    if let (Some(max_attempts), Some(cooldown)) = (payload.join_max_attempts_default, payload.join_cooldown_seconds_default) {
+    if let (Some(max_attempts), Some(cooldown)) = (
+        payload.join_max_attempts_default,
+        payload.join_cooldown_seconds_default,
+    ) {
         validate_join_rules(max_attempts, cooldown).map_err(error_response)?;
     } else if let Some(max_attempts) = payload.join_max_attempts_default {
         // Just validate max_attempts with a reasonable cooldown
@@ -33,7 +38,7 @@ pub fn settings_update(payload: SettingsUpdate) -> CommandResult<Settings> {
         // Just validate cooldown with a reasonable max_attempts
         validate_join_rules(5, cooldown).map_err(error_response)?;
     }
-    
+
     // Validate bot user IDs if provided
     if let Some(main_bot_id) = payload.main_bot_user_id {
         if main_bot_id != 0 {
@@ -45,7 +50,7 @@ pub fn settings_update(payload: SettingsUpdate) -> CommandResult<Settings> {
             validate_bot_user_id(Some(beta_bot_id)).map_err(error_response)?;
         }
     }
-    
+
     let conn = db::get_conn().map_err(error_response)?;
     db::update_settings(&conn, &payload).map_err(error_response)?;
     db::get_settings(&conn).map_err(error_response)

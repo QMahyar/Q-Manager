@@ -45,12 +45,7 @@ impl log::Log for QManagerLogger {
         };
 
         // Format: [LEVEL] [module] message
-        eprintln!(
-            "[{}] [{}] {}",
-            level_str,
-            module,
-            record.args()
-        );
+        eprintln!("[{}] [{}] {}", level_str, module, record.args());
     }
 
     fn flush(&self) {}
@@ -146,15 +141,15 @@ impl LogContext {
 
     pub fn format_prefix(&self) -> String {
         let mut parts = vec![self.module.to_string()];
-        
+
         if let Some(id) = self.account_id {
             parts.push(format!("account:{}", id));
         }
-        
+
         if let Some(op) = self.operation {
             parts.push(op.to_string());
         }
-        
+
         parts.join("][")
     }
 
@@ -183,10 +178,10 @@ mod tests {
     fn test_verbose_mode() {
         set_verbose(false);
         assert!(!is_verbose());
-        
+
         set_verbose(true);
         assert!(is_verbose());
-        
+
         set_verbose(false);
         assert!(!is_verbose());
     }
@@ -196,7 +191,7 @@ mod tests {
         let ctx = LogContext::new("worker")
             .with_account(42)
             .with_operation("start");
-        
+
         assert!(ctx.format_prefix().contains("worker"));
         assert!(ctx.format_prefix().contains("42"));
         assert!(ctx.format_prefix().contains("start"));

@@ -1,5 +1,5 @@
 //! Comprehensive tests for AccountWorker
-//! 
+//!
 //! Tests cover:
 //! - Worker lifecycle (start/stop)
 //! - Connection loss and recovery
@@ -36,7 +36,7 @@ mod tests {
     fn test_worker_creation() {
         let config = create_test_config();
         let worker = AccountWorker::new(config.clone());
-        
+
         assert_eq!(worker.account_id(), config.account_id);
         assert_eq!(*worker.state(), WorkerState::Stopped);
         // Note: join_attempts and reconnect_attempts are private
@@ -50,7 +50,7 @@ mod tests {
         // which calls reset_game_state internally
         let config = create_test_config();
         let worker = AccountWorker::new(config);
-        
+
         // Verify initial state
         assert_eq!(*worker.state(), WorkerState::Stopped);
     }
@@ -85,14 +85,23 @@ mod tests {
                 moderator_bot_id: 222222222,
             },
         ];
-        
+
         let worker = AccountWorker::new(config);
-        
-        assert_eq!(worker.get_moderator_for_group(-1001111111111), Some(111111111));
-        assert_eq!(worker.get_moderator_for_group(-1002222222222), Some(222222222));
-        
+
+        assert_eq!(
+            worker.get_moderator_for_group(-1001111111111),
+            Some(111111111)
+        );
+        assert_eq!(
+            worker.get_moderator_for_group(-1002222222222),
+            Some(222222222)
+        );
+
         // Unknown group should return first available bot
-        assert_eq!(worker.get_moderator_for_group(-1009999999999), Some(123456789));
+        assert_eq!(
+            worker.get_moderator_for_group(-1009999999999),
+            Some(123456789)
+        );
     }
 }
 

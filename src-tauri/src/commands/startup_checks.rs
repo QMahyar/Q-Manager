@@ -1,11 +1,7 @@
 //! Startup check commands for frontend integration
 
+use crate::startup_checks::{self, DiagnosticsSnapshot, StartupCheckResult};
 use tauri::command;
-use crate::startup_checks::{
-    self,
-    StartupCheckResult,
-    DiagnosticsSnapshot,
-};
 
 /// Check if Telethon worker is available (quick check)
 #[command]

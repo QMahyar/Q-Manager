@@ -1,32 +1,27 @@
 //! Account worker for Q Manager
-//! 
+//!
 //! Manages a single Telegram account's automation lifecycle.
 
+use rand::Rng;
+use regex::Regex;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::sleep;
-use rand::Rng;
-use regex::Regex;
 
-use crate::db::{Account, Settings};
-use crate::events::{emit_account_status, emit_phase_detected, emit_action_detected, emit_join_attempt, emit_log};
-use crate::telethon::{TelethonClient, TelethonEvent, TelethonMessage, TelethonButton};
-use crate::workers::detection::{DetectionPipeline, DetectionResult, MessageEvent, InlineButton};
-use crate::workers::cache::{WorkerCache, shared_cache, ActionConfig};
 use crate::constants::{
-    LAST_SEEN_THROTTLE_SECONDS,
-    WORKER_IDLE_BACKOFF_BASE_MS,
-    WORKER_IDLE_BACKOFF_MAX_MS,
+    DEFAULT_DELAY_MAX_SECONDS, DEFAULT_DELAY_MIN_SECONDS, LAST_SEEN_THROTTLE_SECONDS,
+    MAX_DELAY_SECONDS, MIN_DELAY_SECONDS, TELETHON_MAX_RECONNECT_ATTEMPTS,
+    TELETHON_RECONNECT_BACKOFF_MULTIPLIER, TELETHON_RECONNECT_DELAY_BASE_MS,
+    TELETHON_RECONNECT_DELAY_MAX_MS, WORKER_IDLE_BACKOFF_BASE_MS, WORKER_IDLE_BACKOFF_MAX_MS,
     WORKER_IDLE_CYCLES_THRESHOLD,
-    DEFAULT_DELAY_MIN_SECONDS,
-    DEFAULT_DELAY_MAX_SECONDS,
-    MIN_DELAY_SECONDS,
-    MAX_DELAY_SECONDS,
-    TELETHON_MAX_RECONNECT_ATTEMPTS,
-    TELETHON_RECONNECT_DELAY_BASE_MS,
-    TELETHON_RECONNECT_DELAY_MAX_MS,
-    TELETHON_RECONNECT_BACKOFF_MULTIPLIER,
 };
+use crate::db::{Account, Settings};
+use crate::events::{
+    emit_account_status, emit_action_detected, emit_join_attempt, emit_log, emit_phase_detected,
+};
+use crate::telethon::{TelethonButton, TelethonClient, TelethonEvent, TelethonMessage};
+use crate::workers::cache::{shared_cache, ActionConfig, WorkerCache};
+use crate::workers::detection::{DetectionPipeline, DetectionResult, InlineButton, MessageEvent};
 
 /// Worker state
 #[derive(Debug, Clone, PartialEq)]
@@ -77,23 +72,23 @@ pub struct AccountWorker {
     state: WorkerState,
     session: Option<TelethonClient>,
     detection_pipeline: DetectionPipeline,
-    
+
     // Game state
     game_state: GameState,
-    
+
     // Join state
     join_attempts: i32,
     last_join_attempt: Option<std::time::Instant>,
-    
+
     // Throttle last_seen updates (once per 30s)
     last_seen_update: Option<std::time::Instant>,
-    
+
     // Ban warning patterns (loaded from settings)
     ban_warning_patterns: Vec<BanWarningPattern>,
-    
+
     // Two-step action cache (for Cupid etc.)
     two_step_cache: Vec<TwoStepCache>,
-    
+
     // Reconnection state
     reconnect_attempts: u32,
     last_reconnect_attempt: Option<std::time::Instant>,
@@ -150,33 +145,46 @@ impl AccountWorker {
     }
 
     /// Create worker config from account and settings
-    pub fn config_from_account(account: &Account, settings: &Settings, session_dir: PathBuf) -> WorkerConfig {
-        let api_id = account.api_id_override.unwrap_or(settings.api_id.unwrap_or(0));
-        let api_hash = account.api_hash_override.clone()
+    pub fn config_from_account(
+        account: &Account,
+        settings: &Settings,
+        session_dir: PathBuf,
+    ) -> WorkerConfig {
+        let api_id = account
+            .api_id_override
+            .unwrap_or(settings.api_id.unwrap_or(0));
+        let api_hash = account
+            .api_hash_override
+            .clone()
             .or_else(|| settings.api_hash.clone())
             .unwrap_or_default();
-        
+
         // Validate API ID
         if api_id == 0 {
-            log::error!("[{}] Invalid API ID (0). Please configure API ID in Settings or per-account.", account.account_name);
+            log::error!(
+                "[{}] Invalid API ID (0). Please configure API ID in Settings or per-account.",
+                account.account_name
+            );
             log::error!("The worker will fail to authenticate. Please set a valid API ID from https://my.telegram.org");
         }
-        
+
         // Validate API Hash
         if api_hash.is_empty() {
             log::error!("[{}] Invalid API Hash (empty). Please configure API Hash in Settings or per-account.", account.account_name);
             log::error!("The worker will fail to authenticate. Please set a valid API Hash from https://my.telegram.org");
         }
-        
-        let max_attempts = account.join_max_attempts_override
+
+        let max_attempts = account
+            .join_max_attempts_override
             .unwrap_or(settings.join_max_attempts_default);
-        let cooldown = account.join_cooldown_seconds_override
+        let cooldown = account
+            .join_cooldown_seconds_override
             .unwrap_or(settings.join_cooldown_seconds_default);
 
         // Get moderator bot IDs from settings
         let main_bot_id = settings.main_bot_user_id;
         let beta_bot_id = settings.beta_bot_user_id;
-        
+
         let mut moderator_bot_ids = Vec::new();
         if let Some(id) = main_bot_id {
             moderator_bot_ids.push(id);
@@ -200,11 +208,16 @@ impl AccountWorker {
             join_cooldown_seconds: cooldown,
         }
     }
-    
+
     /// Get the moderator bot ID for a specific group
     pub fn get_moderator_for_group(&self, group_id: i64) -> Option<i64> {
         // Find the slot config for this group
-        if let Some(slot) = self.config.group_slots.iter().find(|s| s.group_id == group_id) {
+        if let Some(slot) = self
+            .config
+            .group_slots
+            .iter()
+            .find(|s| s.group_id == group_id)
+        {
             if slot.moderator_bot_id > 0 {
                 return Some(slot.moderator_bot_id);
             }
@@ -228,27 +241,31 @@ impl AccountWorker {
         if self.state != WorkerState::Stopped {
             return Err("Worker is not stopped".to_string());
         }
-        
+
         self.state = WorkerState::Starting;
         log::info!("[{}] Starting worker...", self.config.account_name);
-        
-        let session_path = self.config.session_dir.join("telethon.session").to_string_lossy().to_string();
-        let session = TelethonClient::spawn(
-            self.config.api_id,
-            &self.config.api_hash,
-            &session_path,
-        )?;
+
+        let session_path = self
+            .config
+            .session_dir
+            .join("telethon.session")
+            .to_string_lossy()
+            .to_string();
+        let session =
+            TelethonClient::spawn(self.config.api_id, &self.config.api_hash, &session_path)?;
         let response = session.request("start_updates", serde_json::json!({}))?;
         if !response.ok {
-            return Err(response.error.unwrap_or_else(|| "Telethon worker error".to_string()));
+            return Err(response
+                .error
+                .unwrap_or_else(|| "Telethon worker error".to_string()));
         }
 
         self.session = Some(session);
         self.state = WorkerState::Running;
-        
+
         // Load detection patterns
         self.load_detection_patterns()?;
-        
+
         log::info!("[{}] Worker started successfully", self.config.account_name);
         Ok(())
     }
@@ -258,16 +275,16 @@ impl AccountWorker {
         if self.state != WorkerState::Running && self.state != WorkerState::Starting {
             return Err("Worker is not running".to_string());
         }
-        
+
         self.state = WorkerState::Stopping;
         log::info!("[{}] Stopping worker...", self.config.account_name);
-        
+
         if let Some(session) = self.session.take() {
             let _ = session.shutdown();
         }
-        
+
         self.state = WorkerState::Stopped;
-        
+
         // Reset all state to clean slate
         self.game_state = GameState::default();
         self.join_attempts = 0;
@@ -275,57 +292,66 @@ impl AccountWorker {
         self.reconnect_attempts = 0;
         self.last_reconnect_attempt = None;
         self.two_step_cache.clear();
-        
+
         log::info!("[{}] Worker stopped", self.config.account_name);
         Ok(())
     }
 
     /// Load detection patterns from database
     fn load_detection_patterns(&mut self) -> Result<(), String> {
-        log::debug!("[{}] Loading detection patterns...", self.config.account_name);
-        
+        log::debug!(
+            "[{}] Loading detection patterns...",
+            self.config.account_name
+        );
+
         // Load all data in a single lock scope to minimize lock time
         let (phase_patterns, actions, action_patterns, settings) = {
             let conn = crate::db::get_conn().map_err(|e| e.to_string())?;
-            
+
             let phase_patterns = self.cache.get_phase_patterns(|| {
                 crate::db::list_all_phase_patterns_with_info(&conn)
                     .map_err(|e| format!("Failed to load phase patterns: {}", e))
             })?;
-            
+
             let actions = self.cache.get_actions(|| {
-                crate::db::list_actions(&conn)
-                    .map_err(|e| format!("Failed to load actions: {}", e))
+                crate::db::list_actions(&conn).map_err(|e| format!("Failed to load actions: {}", e))
             })?;
-            
+
             let action_patterns = self.cache.get_action_patterns(|| {
                 crate::db::list_all_action_patterns(&conn)
                     .map_err(|e| format!("Failed to load action patterns: {}", e))
             })?;
-            
+
             let settings = crate::db::get_settings(&conn)
                 .map_err(|e| format!("Failed to load settings: {}", e))?;
-            
+
             // Return all data - lock is released here
             (phase_patterns, actions, action_patterns, settings)
         }; // Lock released here
-        
+
         // Process the data after releasing the lock
-        
+
         // Convert phase patterns to the format expected by DetectionPipeline
         let phase_data: Vec<(crate::db::PhasePattern, String, i32)> = phase_patterns
             .into_iter()
             .map(|p| (p.pattern, p.phase_name, p.phase_priority))
             .collect();
-        
+
         self.detection_pipeline.load_phase_patterns(phase_data);
-        log::info!("[{}] Loaded {} phase patterns", self.config.account_name, 
-            self.detection_pipeline.phase_pattern_count());
-        
+        log::info!(
+            "[{}] Loaded {} phase patterns",
+            self.config.account_name,
+            self.detection_pipeline.phase_pattern_count()
+        );
+
         // Load action patterns
-        self.detection_pipeline.load_action_patterns(actions.clone(), action_patterns);
-        log::info!("[{}] Loaded {} action patterns", self.config.account_name,
-            self.detection_pipeline.action_pattern_count());
+        self.detection_pipeline
+            .load_action_patterns(actions.clone(), action_patterns);
+        log::info!(
+            "[{}] Loaded {} action patterns",
+            self.config.account_name,
+            self.detection_pipeline.action_pattern_count()
+        );
         crate::workers::detection::clear_regex_cache();
 
         // Preload per-account action configs to avoid hot-path DB calls
@@ -337,35 +363,49 @@ impl AccountWorker {
                 }
             }
         }
-        
+
         // Parse ban warning patterns
-        self.ban_warning_patterns = self.parse_ban_warning_patterns(&settings.ban_warning_patterns_json);
-        log::info!("[{}] Loaded {} ban warning patterns", self.config.account_name,
-            self.ban_warning_patterns.len());
-        
+        self.ban_warning_patterns =
+            self.parse_ban_warning_patterns(&settings.ban_warning_patterns_json);
+        log::info!(
+            "[{}] Loaded {} ban warning patterns",
+            self.config.account_name,
+            self.ban_warning_patterns.len()
+        );
+
         Ok(())
     }
-    
+
     /// Parse ban warning patterns JSON into compiled patterns
     fn parse_ban_warning_patterns(&self, json: &str) -> Vec<BanWarningPattern> {
         let mut patterns = Vec::new();
-        
+
         if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(json) {
             for item in arr {
-                let pattern = item.get("pattern").and_then(|p| p.as_str()).unwrap_or("").to_string();
-                let is_regex = item.get("is_regex").and_then(|r| r.as_bool()).unwrap_or(false);
-                let enabled = item.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
-                
+                let pattern = item
+                    .get("pattern")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let is_regex = item
+                    .get("is_regex")
+                    .and_then(|r| r.as_bool())
+                    .unwrap_or(false);
+                let enabled = item
+                    .get("enabled")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(true);
+
                 if !enabled || pattern.is_empty() {
                     continue;
                 }
-                
+
                 let compiled_regex = if is_regex {
                     Regex::new(&pattern).ok()
                 } else {
                     None
                 };
-                
+
                 patterns.push(BanWarningPattern {
                     pattern,
                     is_regex,
@@ -373,21 +413,29 @@ impl AccountWorker {
                 });
             }
         }
-        
+
         patterns
     }
-    
+
     /// Check if a message matches any ban warning pattern
     fn check_ban_warning(&self, text: &str) -> bool {
         for pattern in &self.ban_warning_patterns {
             let matches = if pattern.is_regex {
-                pattern.compiled_regex.as_ref().map(|r| r.is_match(text)).unwrap_or(false)
+                pattern
+                    .compiled_regex
+                    .as_ref()
+                    .map(|r| r.is_match(text))
+                    .unwrap_or(false)
             } else {
                 text.contains(&pattern.pattern)
             };
-            
+
             if matches {
-                log::warn!("[{}] Ban warning detected: {}", self.config.account_name, &pattern.pattern);
+                log::warn!(
+                    "[{}] Ban warning detected: {}",
+                    self.config.account_name,
+                    &pattern.pattern
+                );
                 return true;
             }
         }
@@ -396,19 +444,26 @@ impl AccountWorker {
 
     fn stop_join_attempts(&mut self, reason: &str) {
         if self.join_attempts > 0 || self.last_join_attempt.is_some() {
-            log::warn!("[{}] Stopping join attempts: {}", self.config.account_name, reason);
+            log::warn!(
+                "[{}] Stopping join attempts: {}",
+                self.config.account_name,
+                reason
+            );
         }
         self.join_attempts = 0;
         self.last_join_attempt = None;
     }
 
     /// Run the main message loop (call this in a tokio task)
-    pub async fn run_loop(&mut self, mut command_rx: tokio::sync::mpsc::Receiver<crate::workers::manager::WorkerCommand>) -> Result<(), String> {
+    pub async fn run_loop(
+        &mut self,
+        mut command_rx: tokio::sync::mpsc::Receiver<crate::workers::manager::WorkerCommand>,
+    ) -> Result<(), String> {
         use crate::workers::manager::WorkerCommand;
-        
+
         log::info!("[{}] Starting message loop", self.config.account_name);
         let mut idle_cycles = 0u32;
-        
+
         while self.state == WorkerState::Running {
             tokio::select! {
                 cmd = command_rx.recv() => {
@@ -460,14 +515,14 @@ impl AccountWorker {
             }
 
             // Small sleep with mild backoff to prevent busy-waiting
-            let backoff = if idle_cycles > WORKER_IDLE_CYCLES_THRESHOLD { 
-                WORKER_IDLE_BACKOFF_MAX_MS 
-            } else { 
-                WORKER_IDLE_BACKOFF_BASE_MS 
+            let backoff = if idle_cycles > WORKER_IDLE_CYCLES_THRESHOLD {
+                WORKER_IDLE_BACKOFF_MAX_MS
+            } else {
+                WORKER_IDLE_BACKOFF_BASE_MS
             };
             tokio::time::sleep(Duration::from_millis(backoff)).await;
         }
-        
+
         log::info!("[{}] Message loop ended", self.config.account_name);
         Ok(())
     }
@@ -483,7 +538,11 @@ impl AccountWorker {
             }
             "message_edited" => {
                 if let Some(message) = event.message {
-                    log::debug!("[{}] Message edited: {}", self.config.account_name, message.id);
+                    log::debug!(
+                        "[{}] Message edited: {}",
+                        self.config.account_name,
+                        message.id
+                    );
                     self.handle_telethon_message(message).await?;
                 }
             }
@@ -491,11 +550,11 @@ impl AccountWorker {
         }
         Ok(())
     }
-    
+
     /// Check if a Telethon error is recoverable
     fn is_recoverable_error(error: &str) -> bool {
         let error_lower = error.to_lowercase();
-        
+
         // Network-related errors are recoverable (temporary issues)
         if error_lower.contains("network")
             || error_lower.contains("timeout")
@@ -510,7 +569,7 @@ impl AccountWorker {
         {
             return true;
         }
-        
+
         // Auth/account errors are NOT recoverable (need user intervention)
         if error_lower.contains("auth")
             || error_lower.contains("password")
@@ -526,11 +585,14 @@ impl AccountWorker {
         {
             return false;
         }
-        
+
         // Default to NON-recoverable for unknown errors (safer)
         // This prevents infinite reconnection loops for unexpected errors
         // Users can restart the worker manually if needed
-        log::warn!("Unknown error type (treating as non-recoverable): {}", error);
+        log::warn!(
+            "Unknown error type (treating as non-recoverable): {}",
+            error
+        );
         false
     }
 
@@ -540,17 +602,18 @@ impl AccountWorker {
         if message.is_outgoing {
             return Ok(());
         }
-        
+
         // Check if message is from a relevant chat
         let is_group_message = self.config.group_chat_ids.contains(&message.chat_id);
         let is_bot_pm = self.config.moderator_bot_ids.contains(&message.sender_id);
-        
+
         if !is_group_message && !is_bot_pm {
             return Ok(()); // Ignore messages from other chats
         }
-        
+
         // Update last_seen timestamp (throttled)
-        let should_update = self.last_seen_update
+        let should_update = self
+            .last_seen_update
             .map(|t| t.elapsed() > Duration::from_secs(LAST_SEEN_THROTTLE_SECONDS))
             .unwrap_or(true);
         if should_update {
@@ -577,7 +640,7 @@ impl AccountWorker {
                     self.config.account_id,
                     &self.config.account_name,
                     "warn",
-                    "Ban warning received from moderator bot. Join attempts stopped."
+                    "Ban warning received from moderator bot. Join attempts stopped.",
                 );
                 // Don't return - still process the message for other detections
             }
@@ -585,21 +648,27 @@ impl AccountWorker {
 
         // Convert to detection event
         let event = self.telethon_message_to_event(&message);
-        
+
         // Run detection pipeline
         let results = self.detection_pipeline.process(&event);
-        
+
         for result in results {
             match result {
                 DetectionResult::Phase { phase_name, .. } => {
                     self.handle_phase(&phase_name, &message).await?;
                 }
-                DetectionResult::Action { action_id, action_name, step, .. } => {
-                    self.handle_action(action_id, &action_name, step, &message).await?;
+                DetectionResult::Action {
+                    action_id,
+                    action_name,
+                    step,
+                    ..
+                } => {
+                    self.handle_action(action_id, &action_name, step, &message)
+                        .await?;
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -628,10 +697,22 @@ impl AccountWorker {
     }
 
     /// Handle a detected phase
-    async fn handle_phase(&mut self, phase_name: &str, message: &TelethonMessage) -> Result<(), String> {
-        log::info!("[{}] Phase detected: {}", self.config.account_name, phase_name);
-        emit_phase_detected(self.config.account_id, &self.config.account_name, phase_name);
-        
+    async fn handle_phase(
+        &mut self,
+        phase_name: &str,
+        message: &TelethonMessage,
+    ) -> Result<(), String> {
+        log::info!(
+            "[{}] Phase detected: {}",
+            self.config.account_name,
+            phase_name
+        );
+        emit_phase_detected(
+            self.config.account_id,
+            &self.config.account_name,
+            phase_name,
+        );
+
         match phase_name {
             "join_time" => {
                 if !self.game_state.joined && self.can_attempt_join() {
@@ -655,7 +736,7 @@ impl AccountWorker {
             }
             _ => {}
         }
-        
+
         Ok(())
     }
 
@@ -664,53 +745,62 @@ impl AccountWorker {
         if self.game_state.ban_warned || self.game_state.joined || self.game_state.game_started {
             return false;
         }
-        
+
         if self.join_attempts >= self.config.max_join_attempts {
             return false;
         }
-        
+
         if let Some(last) = self.last_join_attempt {
             let cooldown = Duration::from_secs(self.config.join_cooldown_seconds as u64);
             if last.elapsed() < cooldown {
                 return false;
             }
         }
-        
+
         true
     }
 
     /// Handle a detected action
     async fn handle_action(
-        &mut self, 
-        action_id: i64, 
-        action_name: &str, 
+        &mut self,
+        action_id: i64,
+        action_name: &str,
         step: i32,
-        message: &TelethonMessage
+        message: &TelethonMessage,
     ) -> Result<(), String> {
         log::info!(
             "[{}] Action detected: {} (id={}, step={})",
-            self.config.account_name, action_name, action_id, step
+            self.config.account_name,
+            action_name,
+            action_id,
+            step
         );
-        
+
         // Check if this is a two-step action
         let is_two_step = self.is_two_step_action(action_id);
-        
+
         if is_two_step {
-            self.handle_two_step_action(action_id, action_name, step, message).await?;
+            self.handle_two_step_action(action_id, action_name, step, message)
+                .await?;
         } else {
             // Get target rules for this account + action
             let target_button = self.select_target_button(action_id, message)?;
-            
+
             if let Some((button, delay)) = target_button {
                 // Apply delay
                 if delay > 0 {
-                    log::debug!("[{}] Waiting {}ms before clicking", self.config.account_name, delay);
+                    log::debug!(
+                        "[{}] Waiting {}ms before clicking",
+                        self.config.account_name,
+                        delay
+                    );
                     tokio::time::sleep(Duration::from_millis(delay as u64)).await;
                 }
-                
+
                 // Click the button
-                self.click_button(message.chat_id, message.id, &button).await?;
-                
+                self.click_button(message.chat_id, message.id, &button)
+                    .await?;
+
                 // Emit action event
                 emit_action_detected(
                     self.config.account_id,
@@ -720,17 +810,17 @@ impl AccountWorker {
                 );
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Check if an action is a two-step action
     fn is_two_step_action(&self, action_id: i64) -> bool {
         self.get_action_config(action_id)
             .map(|config| config.is_two_step)
             .unwrap_or(false)
     }
-    
+
     /// Handle a two-step action (like Cupid choosing lovers)
     /// Algorithm: Cache first prompt buttons, then resolve pair when step 2 arrives.
     async fn handle_two_step_action(
@@ -740,16 +830,18 @@ impl AccountWorker {
         step: i32,
         message: &TelethonMessage,
     ) -> Result<(), String> {
-        let buttons: Vec<TelethonButton> = message.buttons
+        let buttons: Vec<TelethonButton> = message
+            .buttons
             .iter()
             .flat_map(|row| row.iter())
             .cloned()
             .collect();
         let button_texts: Vec<String> = buttons.iter().map(|b| b.text.clone()).collect();
-        
+
         if step == 1 {
             // First step - cache buttons only
-            self.two_step_cache.retain(|entry| entry.action_id != action_id);
+            self.two_step_cache
+                .retain(|entry| entry.action_id != action_id);
             self.two_step_cache.push(TwoStepCache {
                 action_id,
                 first_chat_id: message.chat_id,
@@ -761,7 +853,11 @@ impl AccountWorker {
         }
 
         if step == 2 {
-            let cache = self.two_step_cache.iter().find(|entry| entry.action_id == action_id).cloned();
+            let cache = self
+                .two_step_cache
+                .iter()
+                .find(|entry| entry.action_id == action_id)
+                .cloned();
             if cache.is_none() {
                 log::warn!(
                     "[{}] Two-step action step 2 received but no cache exists for action '{}' (id={})",
@@ -769,11 +865,16 @@ impl AccountWorker {
                 );
                 return Ok(());
             }
-            let first_buttons = cache.as_ref().map(|c| c.first_buttons.clone()).unwrap_or_default();
+            let first_buttons = cache
+                .as_ref()
+                .map(|c| c.first_buttons.clone())
+                .unwrap_or_default();
             let pairs = self.get_target_pairs(action_id);
             let blacklist = self.get_blacklist(action_id);
-            let button_has = |list: &[TelethonButton], target: &str| list.iter().any(|b| b.text.contains(target));
-            
+            let button_has = |list: &[TelethonButton], target: &str| {
+                list.iter().any(|b| b.text.contains(target))
+            };
+
             // Find first configured pair where both A and B are available across prompts
             let mut selected_pair: Option<(String, String)> = None;
             for (target_a, target_b) in &pairs {
@@ -807,14 +908,24 @@ impl AccountWorker {
 
             if let Some((target_a, target_b)) = selected_pair {
                 if let Some(cache) = &cache {
-                    if let Some(btn_a) = cache.first_buttons.iter().find(|b| b.text.contains(&target_a)).cloned() {
+                    if let Some(btn_a) = cache
+                        .first_buttons
+                        .iter()
+                        .find(|b| b.text.contains(&target_a))
+                        .cloned()
+                    {
                         let delay = self.calculate_action_delay(action_id);
                         if delay > 0 {
                             tokio::time::sleep(Duration::from_millis(delay as u64)).await;
                         }
-                        self.click_button(cache.first_chat_id, cache.first_message_id, &btn_a).await?;
-                        emit_action_detected(self.config.account_id, &self.config.account_name,
-                            &format!("{} (Step 1)", action_name), Some(target_a.clone()));
+                        self.click_button(cache.first_chat_id, cache.first_message_id, &btn_a)
+                            .await?;
+                        emit_action_detected(
+                            self.config.account_id,
+                            &self.config.account_name,
+                            &format!("{} (Step 1)", action_name),
+                            Some(target_a.clone()),
+                        );
                     }
                 }
 
@@ -823,27 +934,34 @@ impl AccountWorker {
                     if delay > 0 {
                         tokio::time::sleep(Duration::from_millis(delay as u64)).await;
                     }
-                    self.click_button(message.chat_id, message.id, &btn_b).await?;
-                    emit_action_detected(self.config.account_id, &self.config.account_name,
-                        &format!("{} (Step 2)", action_name), Some(target_b.clone()));
+                    self.click_button(message.chat_id, message.id, &btn_b)
+                        .await?;
+                    emit_action_detected(
+                        self.config.account_id,
+                        &self.config.account_name,
+                        &format!("{} (Step 2)", action_name),
+                        Some(target_b.clone()),
+                    );
                 }
             }
 
-            self.two_step_cache.retain(|entry| entry.action_id != action_id);
+            self.two_step_cache
+                .retain(|entry| entry.action_id != action_id);
         }
-        
+
         Ok(())
     }
-    
+
     /// Find a button by text (partial match)
     fn find_button_by_text(&self, message: &TelethonMessage, text: &str) -> Option<TelethonButton> {
-        message.buttons
+        message
+            .buttons
             .iter()
             .flat_map(|row| row.iter())
             .find(|b| b.text.contains(text))
             .cloned()
     }
-    
+
     /// Get target pairs for a two-step action
     fn get_target_pairs(&self, action_id: i64) -> Vec<(String, String)> {
         self.get_action_config(action_id)
@@ -852,11 +970,13 @@ impl AccountWorker {
     }
 
     /// Select which button to click based on target rules
-    fn select_target_button(&self, action_id: i64, message: &TelethonMessage) -> Result<Option<(TelethonButton, i32)>, String> {
-        let buttons: Vec<&TelethonButton> = message.buttons
-            .iter()
-            .flat_map(|row| row.iter())
-            .collect();
+    fn select_target_button(
+        &self,
+        action_id: i64,
+        message: &TelethonMessage,
+    ) -> Result<Option<(TelethonButton, i32)>, String> {
+        let buttons: Vec<&TelethonButton> =
+            message.buttons.iter().flat_map(|row| row.iter()).collect();
 
         if buttons.is_empty() {
             return Ok(None);
@@ -873,7 +993,7 @@ impl AccountWorker {
 
         // Get the action's button_type to determine selection strategy
         let button_type = self.get_action_button_type(action_id);
-        
+
         // Try to get target override for this account + action
         let targets = self.get_target_list(action_id);
         let blacklist = self.get_blacklist(action_id);
@@ -887,13 +1007,14 @@ impl AccountWorker {
                         return Ok(Some(((*btn).clone(), delay)));
                     }
                 }
-                
+
                 // Random fallback for player lists
                 if self.is_random_fallback_enabled(action_id) {
-                    let available: Vec<_> = buttons.iter()
+                    let available: Vec<_> = buttons
+                        .iter()
                         .filter(|b| !blacklist.contains(&b.text))
                         .collect();
-                    
+
                     if !available.is_empty() {
                         let idx = rand::thread_rng().gen_range(0..available.len());
                         return Ok(Some(((*available[idx]).clone(), delay)));
@@ -903,19 +1024,31 @@ impl AccountWorker {
             "yes_no" => {
                 // Yes/No buttons: look for exact match or common patterns
                 let target_value = targets.first().map(|s| s.as_str()).unwrap_or("yes");
-                
+
                 // Try to find button matching the target (yes/no/بله/خیر etc.)
                 if let Some(btn) = buttons.iter().find(|b| {
                     let text_lower = b.text.to_lowercase();
                     match target_value.to_lowercase().as_str() {
-                        "yes" | "بله" | "آره" => text_lower.contains("yes") || text_lower.contains("بله") || text_lower.contains("آره") || text_lower.contains("✓") || text_lower.contains("✅"),
-                        "no" | "خیر" | "نه" => text_lower.contains("no") || text_lower.contains("خیر") || text_lower.contains("نه") || text_lower.contains("✗") || text_lower.contains("❌"),
+                        "yes" | "بله" | "آره" => {
+                            text_lower.contains("yes")
+                                || text_lower.contains("بله")
+                                || text_lower.contains("آره")
+                                || text_lower.contains("✓")
+                                || text_lower.contains("✅")
+                        }
+                        "no" | "خیر" | "نه" => {
+                            text_lower.contains("no")
+                                || text_lower.contains("خیر")
+                                || text_lower.contains("نه")
+                                || text_lower.contains("✗")
+                                || text_lower.contains("❌")
+                        }
                         _ => b.text.contains(target_value),
                     }
                 }) {
                     return Ok(Some(((*btn).clone(), delay)));
                 }
-                
+
                 // Fallback to first button if no match
                 if self.is_random_fallback_enabled(action_id) {
                     if let Some(btn) = buttons.first() {
@@ -930,7 +1063,7 @@ impl AccountWorker {
                         return Ok(Some(((*btn).clone(), delay)));
                     }
                 }
-                
+
                 // Try partial match as fallback
                 for target in &targets {
                     if let Some(btn) = buttons.iter().find(|b| b.text.contains(target)) {
@@ -946,12 +1079,13 @@ impl AccountWorker {
                         return Ok(Some(((*btn).clone(), delay)));
                     }
                 }
-                
+
                 if self.is_random_fallback_enabled(action_id) {
-                    let available: Vec<_> = buttons.iter()
+                    let available: Vec<_> = buttons
+                        .iter()
                         .filter(|b| !blacklist.contains(&b.text))
                         .collect();
-                    
+
                     if !available.is_empty() {
                         let idx = rand::thread_rng().gen_range(0..available.len());
                         return Ok(Some(((*available[idx]).clone(), delay)));
@@ -962,7 +1096,7 @@ impl AccountWorker {
 
         Ok(None)
     }
-    
+
     /// Get the button_type for an action
     fn get_action_button_type(&self, action_id: i64) -> String {
         self.get_action_config(action_id)
@@ -976,7 +1110,7 @@ impl AccountWorker {
             .map(|config| (config.delay_min, config.delay_max))
             .unwrap_or((DEFAULT_DELAY_MIN_SECONDS, DEFAULT_DELAY_MAX_SECONDS))
     }
-    
+
     /// Calculate a random delay in milliseconds for an action
     fn calculate_action_delay(&self, action_id: i64) -> i32 {
         let (min_delay, max_delay) = self.get_delay_settings(action_id);
@@ -1022,15 +1156,16 @@ impl AccountWorker {
         let (delay_min, delay_max) = crate::db::get_effective_delay(conn, account_id, action.id)
             .unwrap_or((DEFAULT_DELAY_MIN_SECONDS, DEFAULT_DELAY_MAX_SECONDS));
 
-        let target_pairs = crate::db::get_target_pairs(conn, account_id, action.id)
-            .unwrap_or_default();
-        let blacklist = crate::db::get_blacklist(conn, account_id, action.id)
-            .unwrap_or_default();
+        let target_pairs =
+            crate::db::get_target_pairs(conn, account_id, action.id).unwrap_or_default();
+        let blacklist = crate::db::get_blacklist(conn, account_id, action.id).unwrap_or_default();
 
         let mut targets = Vec::new();
         let mut random_fallback_enabled = action.random_fallback_enabled;
 
-        if let Ok(Some(rule_json)) = crate::db::get_effective_target_rule(conn, account_id, action.id) {
+        if let Ok(Some(rule_json)) =
+            crate::db::get_effective_target_rule(conn, account_id, action.id)
+        {
             if let Ok(rule) = serde_json::from_str::<serde_json::Value>(&rule_json) {
                 if let Some(target_list) = rule.get("targets").and_then(|t| t.as_array()) {
                     targets = target_list
@@ -1064,8 +1199,17 @@ impl AccountWorker {
     }
 
     /// Click a button
-    async fn click_button(&mut self, chat_id: i64, message_id: i64, button: &TelethonButton) -> Result<(), String> {
-        log::info!("[{}] Clicking button: {}", self.config.account_name, button.text);
+    async fn click_button(
+        &mut self,
+        chat_id: i64,
+        message_id: i64,
+        button: &TelethonButton,
+    ) -> Result<(), String> {
+        log::info!(
+            "[{}] Clicking button: {}",
+            self.config.account_name,
+            button.text
+        );
 
         if let Some(session) = &self.session {
             match button.kind.as_str() {
@@ -1079,7 +1223,8 @@ impl AccountWorker {
                                 "data": data,
                             }),
                         )?;
-                        self.handle_telethon_response("click_button", &response).await?;
+                        self.handle_telethon_response("click_button", &response)
+                            .await?;
                     }
                 }
                 "url" => {
@@ -1093,7 +1238,8 @@ impl AccountWorker {
                                         "text": format!("/start {}", param),
                                     }),
                                 )?;
-                                self.handle_telethon_response("send_message", &response).await?;
+                                self.handle_telethon_response("send_message", &response)
+                                    .await?;
                             }
                         }
                     }
@@ -1107,7 +1253,11 @@ impl AccountWorker {
         Ok(())
     }
 
-    async fn handle_telethon_response(&mut self, action: &str, response: &crate::telethon::TelethonResponse) -> Result<(), String> {
+    async fn handle_telethon_response(
+        &mut self,
+        action: &str,
+        response: &crate::telethon::TelethonResponse,
+    ) -> Result<(), String> {
         if response.ok {
             return Ok(());
         }
@@ -1142,13 +1292,19 @@ impl AccountWorker {
                 self.state = WorkerState::Error(msg.clone());
                 emit_account_status(self.config.account_id, "error", Some(msg.clone()));
                 if let Ok(conn) = crate::db::get_conn() {
-                    let _ = crate::db::update_account_status(&conn, self.config.account_id, "error");
+                    let _ =
+                        crate::db::update_account_status(&conn, self.config.account_id, "error");
                 }
                 Err(msg)
             }
             _ => {
                 let err = message.unwrap_or_else(|| "Telethon request failed".to_string());
-                log::warn!("[{}] Telethon {} failed: {}", self.config.account_name, action, err);
+                log::warn!(
+                    "[{}] Telethon {} failed: {}",
+                    self.config.account_name,
+                    action,
+                    err
+                );
                 Err(err)
             }
         }
@@ -1158,12 +1314,14 @@ impl AccountWorker {
     async fn attempt_join(&mut self, message: &TelethonMessage) -> Result<(), String> {
         self.join_attempts += 1;
         self.last_join_attempt = Some(std::time::Instant::now());
-        
+
         log::info!(
             "[{}] Attempting to join (attempt {}/{})",
-            self.config.account_name, self.join_attempts, self.config.max_join_attempts
+            self.config.account_name,
+            self.join_attempts,
+            self.config.max_join_attempts
         );
-        
+
         emit_join_attempt(
             self.config.account_id,
             &self.config.account_name,
@@ -1171,11 +1329,12 @@ impl AccountWorker {
             self.config.max_join_attempts,
             false, // Will be updated when confirmation received
         );
-        
+
         // Get the correct moderator bot for this group
-        let bot_id = self.get_moderator_for_group(message.chat_id)
+        let bot_id = self
+            .get_moderator_for_group(message.chat_id)
             .or_else(|| self.config.moderator_bot_ids.first().copied());
-        
+
         // Find the join button (URL button)
         for row in &message.buttons {
             for button in row {
@@ -1184,7 +1343,12 @@ impl AccountWorker {
                         if let Some(param) = parse_start_parameter(url) {
                             if let Some(bot) = bot_id {
                                 if let Some(session) = &self.session {
-                                    log::info!("[{}] Sending /start {} to bot {}", self.config.account_name, param, bot);
+                                    log::info!(
+                                        "[{}] Sending /start {} to bot {}",
+                                        self.config.account_name,
+                                        param,
+                                        bot
+                                    );
                                     let response = session.request(
                                         "send_message",
                                         serde_json::json!({
@@ -1192,7 +1356,8 @@ impl AccountWorker {
                                             "text": format!("/start {}", param),
                                         }),
                                     )?;
-                                    self.handle_telethon_response("send_message", &response).await?;
+                                    self.handle_telethon_response("send_message", &response)
+                                        .await?;
                                     return Ok(());
                                 }
                             }
@@ -1201,7 +1366,7 @@ impl AccountWorker {
                 }
             }
         }
-        
+
         log::warn!("[{}] No join button found", self.config.account_name);
         Ok(())
     }
@@ -1212,7 +1377,7 @@ impl AccountWorker {
         self.join_attempts = 0;
         self.last_join_attempt = None;
     }
-    
+
     /// Calculate reconnection delay with exponential backoff
     fn calculate_reconnect_delay(&self) -> u64 {
         let base = TELETHON_RECONNECT_DELAY_BASE_MS as f64;
@@ -1220,7 +1385,7 @@ impl AccountWorker {
         let delay = (base * multiplier) as u64;
         delay.min(TELETHON_RECONNECT_DELAY_MAX_MS)
     }
-    
+
     /// Attempt to reconnect to Telethon
     async fn attempt_reconnect(&mut self) -> Result<bool, String> {
         if self.reconnect_attempts >= TELETHON_MAX_RECONNECT_ATTEMPTS {
@@ -1251,12 +1416,21 @@ impl AccountWorker {
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
 
-        let session_path = self.config.session_dir.join("telethon.session").to_string_lossy().to_string();
+        let session_path = self
+            .config
+            .session_dir
+            .join("telethon.session")
+            .to_string_lossy()
+            .to_string();
         match TelethonClient::spawn(self.config.api_id, &self.config.api_hash, &session_path) {
             Ok(session) => {
                 let response = session.request("start_updates", serde_json::json!({}))?;
                 if !response.ok {
-                    log::warn!("[{}] Telethon reconnect failed: {}", self.config.account_name, response.error.unwrap_or_default());
+                    log::warn!(
+                        "[{}] Telethon reconnect failed: {}",
+                        self.config.account_name,
+                        response.error.unwrap_or_default()
+                    );
                     return Ok(false);
                 }
 
@@ -1267,29 +1441,37 @@ impl AccountWorker {
                 emit_account_status(self.config.account_id, "running", None);
 
                 if let Err(e) = self.load_detection_patterns() {
-                    log::warn!("[{}] Failed to reload patterns after reconnect: {}", self.config.account_name, e);
+                    log::warn!(
+                        "[{}] Failed to reload patterns after reconnect: {}",
+                        self.config.account_name,
+                        e
+                    );
                 }
 
                 Ok(true)
             }
             Err(e) => {
-                log::error!("[{}] Failed to create Telethon session: {}", self.config.account_name, e);
+                log::error!(
+                    "[{}] Failed to create Telethon session: {}",
+                    self.config.account_name,
+                    e
+                );
                 Ok(false)
             }
         }
     }
-    
+
     /// Handle connection loss with reconnection logic
     async fn handle_connection_lost(&mut self, reason: &str) -> Result<(), String> {
         log::warn!("[{}] Connection lost: {}", self.config.account_name, reason);
-        
+
         emit_log(
             self.config.account_id,
             &self.config.account_name,
             "warn",
             &format!("Connection lost: {}. Attempting to reconnect...", reason),
         );
-        
+
         // Attempt reconnection with proper backoff
         loop {
             if self.state != WorkerState::Running {
@@ -1309,23 +1491,36 @@ impl AccountWorker {
                 Ok(false) => {
                     if self.reconnect_attempts >= TELETHON_MAX_RECONNECT_ATTEMPTS {
                         // Max attempts reached, stop the worker
-                        self.state = WorkerState::Error(format!("Failed to reconnect after {} attempts", TELETHON_MAX_RECONNECT_ATTEMPTS));
+                        self.state = WorkerState::Error(format!(
+                            "Failed to reconnect after {} attempts",
+                            TELETHON_MAX_RECONNECT_ATTEMPTS
+                        ));
                         emit_account_status(
                             self.config.account_id,
                             "error",
-                            Some(format!("Reconnection failed after {} attempts", TELETHON_MAX_RECONNECT_ATTEMPTS)),
+                            Some(format!(
+                                "Reconnection failed after {} attempts",
+                                TELETHON_MAX_RECONNECT_ATTEMPTS
+                            )),
                         );
                         emit_log(
                             self.config.account_id,
                             &self.config.account_name,
                             "error",
-                            &format!("Failed to reconnect after {} attempts. Worker stopped.", TELETHON_MAX_RECONNECT_ATTEMPTS),
+                            &format!(
+                                "Failed to reconnect after {} attempts. Worker stopped.",
+                                TELETHON_MAX_RECONNECT_ATTEMPTS
+                            ),
                         );
-                        
+
                         if let Ok(conn) = crate::db::get_conn() {
-                            let _ = crate::db::update_account_status(&conn, self.config.account_id, "error");
+                            let _ = crate::db::update_account_status(
+                                &conn,
+                                self.config.account_id,
+                                "error",
+                            );
                         }
-                        
+
                         return Err("Max reconnection attempts exceeded".to_string());
                     }
                     // Continue trying - attempt_reconnect will handle delay on next iteration
@@ -1336,7 +1531,11 @@ impl AccountWorker {
                     if self.reconnect_attempts >= TELETHON_MAX_RECONNECT_ATTEMPTS {
                         self.state = WorkerState::Error(e.clone());
                         if let Ok(conn) = crate::db::get_conn() {
-                            let _ = crate::db::update_account_status(&conn, self.config.account_id, "error");
+                            let _ = crate::db::update_account_status(
+                                &conn,
+                                self.config.account_id,
+                                "error",
+                            );
                         }
                         return Err(e);
                     }

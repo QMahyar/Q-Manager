@@ -1,9 +1,9 @@
 //! Custom error types for Q Manager
-//! 
+//!
 //! Provides structured error handling with proper context and categorization.
 
-use thiserror::Error;
 use serde::Serialize;
+use thiserror::Error;
 
 /// Main application error type
 #[derive(Error, Debug)]
@@ -50,7 +50,11 @@ pub enum DatabaseError {
     NotFound { entity: String, id: i64 },
 
     #[error("Duplicate record: {entity} with {field}='{value}' already exists")]
-    Duplicate { entity: String, field: String, value: String },
+    Duplicate {
+        entity: String,
+        field: String,
+        value: String,
+    },
 
     #[error("Migration failed: {0}")]
     MigrationFailed(String),
@@ -276,14 +280,14 @@ mod tests {
             id: 42,
         };
         assert_eq!(err.to_string(), "Record not found: Account with id 42");
-        
+
         let err = DatabaseError::Duplicate {
             entity: "Account".to_string(),
             field: "phone".to_string(),
             value: "+1234567890".to_string(),
         };
         assert!(err.to_string().contains("already exists"));
-        
+
         let err = DatabaseError::ConnectionFailed("timeout".to_string());
         assert!(err.to_string().contains("Connection failed"));
     }
@@ -296,7 +300,7 @@ mod tests {
         };
         assert!(err.to_string().contains("400"));
         assert!(err.to_string().contains("Bad Request"));
-        
+
         let err = TelegramError::AuthFailed("Invalid code".to_string());
         assert!(err.to_string().contains("Authentication failed"));
     }
@@ -307,7 +311,7 @@ mod tests {
             field: "phone".to_string(),
         };
         assert!(err.to_string().contains("phone"));
-        
+
         let err = ValidationError::InvalidFormat {
             field: "email".to_string(),
             message: "missing @".to_string(),
@@ -320,7 +324,7 @@ mod tests {
     fn test_worker_error_display() {
         let err = WorkerError::NotFound(42);
         assert!(err.to_string().contains("42"));
-        
+
         let err = WorkerError::AlreadyRunning(42);
         assert!(err.to_string().contains("already running"));
     }
@@ -329,7 +333,7 @@ mod tests {
     fn test_config_error_display() {
         let err = ConfigError::MissingSetting("api_id".to_string());
         assert!(err.to_string().contains("api_id"));
-        
+
         let err = ConfigError::NoModeratorBot;
         assert!(err.to_string().contains("Moderator bot"));
     }
@@ -337,14 +341,28 @@ mod tests {
     #[test]
     fn test_error_response_codes() {
         let test_cases = vec![
-            (AppError::Database(DatabaseError::ConnectionFailed("test".to_string())), "DATABASE_ERROR"),
-            (AppError::Telegram(TelegramError::Timeout("test".to_string())), "TELEGRAM_ERROR"),
-            (AppError::Validation(ValidationError::Required { field: "test".to_string() }), "VALIDATION_ERROR"),
+            (
+                AppError::Database(DatabaseError::ConnectionFailed("test".to_string())),
+                "DATABASE_ERROR",
+            ),
+            (
+                AppError::Telegram(TelegramError::Timeout("test".to_string())),
+                "TELEGRAM_ERROR",
+            ),
+            (
+                AppError::Validation(ValidationError::Required {
+                    field: "test".to_string(),
+                }),
+                "VALIDATION_ERROR",
+            ),
             (AppError::Worker(WorkerError::NotFound(1)), "WORKER_ERROR"),
-            (AppError::Config(ConfigError::NoApiCredentials), "CONFIG_ERROR"),
+            (
+                AppError::Config(ConfigError::NoApiCredentials),
+                "CONFIG_ERROR",
+            ),
             (AppError::Generic("test".to_string()), "ERROR"),
         ];
-        
+
         for (err, expected_code) in test_cases {
             let response = ErrorResponse::from(&err);
             assert_eq!(response.code, expected_code);
@@ -356,7 +374,7 @@ mod tests {
         // From String
         let err: AppError = "test error".to_string().into();
         assert!(matches!(err, AppError::Generic(_)));
-        
+
         // From &str
         let err: AppError = "test error".into();
         assert!(matches!(err, AppError::Generic(_)));
@@ -366,7 +384,7 @@ mod tests {
     fn test_error_response_has_message() {
         let err = AppError::Database(DatabaseError::QueryFailed("SQL syntax error".to_string()));
         let response = ErrorResponse::from(&err);
-        
+
         assert!(!response.message.is_empty());
         assert!(response.details.is_some());
     }

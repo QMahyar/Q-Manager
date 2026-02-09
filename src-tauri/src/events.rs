@@ -9,7 +9,10 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime};
 
-use crate::ipc::{EVENT_ACCOUNT_LOG, EVENT_ACCOUNT_STATUS, EVENT_ACTION_DETECTED, EVENT_JOIN_ATTEMPT, EVENT_PHASE_DETECTED, EVENT_REGEX_VALIDATION_ERROR};
+use crate::ipc::{
+    EVENT_ACCOUNT_LOG, EVENT_ACCOUNT_STATUS, EVENT_ACTION_DETECTED, EVENT_JOIN_ATTEMPT,
+    EVENT_PHASE_DETECTED, EVENT_REGEX_VALIDATION_ERROR,
+};
 
 // ============================================================================
 // Event Types
@@ -107,7 +110,13 @@ impl<R: Runtime> EventEmitter<R> {
     }
 
     /// Emit action detected
-    pub fn action_detected(&self, account_id: i64, account_name: &str, action_name: &str, button_clicked: Option<String>) {
+    pub fn action_detected(
+        &self,
+        account_id: i64,
+        account_name: &str,
+        action_name: &str,
+        button_clicked: Option<String>,
+    ) {
         let event = ActionDetectedEvent {
             account_id,
             account_name: account_name.to_string(),
@@ -119,7 +128,14 @@ impl<R: Runtime> EventEmitter<R> {
     }
 
     /// Emit join attempt
-    pub fn join_attempt(&self, account_id: i64, account_name: &str, attempt: i32, max_attempts: i32, success: bool) {
+    pub fn join_attempt(
+        &self,
+        account_id: i64,
+        account_name: &str,
+        attempt: i32,
+        max_attempts: i32,
+        success: bool,
+    ) {
         let event = JoinAttemptEvent {
             account_id,
             account_name: account_name.to_string(),
@@ -171,7 +187,8 @@ pub fn init_global_emitter(app: AppHandle<tauri::Wry>) {
 
 /// Get the global event emitter
 pub fn global_emitter() -> Option<EventEmitter<tauri::Wry>> {
-    GLOBAL_APP.get()
+    GLOBAL_APP
+        .get()
         .and_then(|m| m.lock().ok())
         .and_then(|guard| guard.clone())
         .map(EventEmitter::new)
@@ -182,7 +199,7 @@ pub fn emit_account_status(account_id: i64, status: &str, message: Option<String
     if let Some(emitter) = global_emitter() {
         emitter.account_status(account_id, status, message.clone());
     }
-    
+
     // Refresh tray menu when account status changes
     if let Some(app_mutex) = GLOBAL_APP.get() {
         if let Ok(guard) = app_mutex.lock() {
@@ -201,14 +218,25 @@ pub fn emit_phase_detected(account_id: i64, account_name: &str, phase_name: &str
 }
 
 /// Emit action detected (global)
-pub fn emit_action_detected(account_id: i64, account_name: &str, action_name: &str, button_clicked: Option<String>) {
+pub fn emit_action_detected(
+    account_id: i64,
+    account_name: &str,
+    action_name: &str,
+    button_clicked: Option<String>,
+) {
     if let Some(emitter) = global_emitter() {
         emitter.action_detected(account_id, account_name, action_name, button_clicked);
     }
 }
 
 /// Emit join attempt (global)
-pub fn emit_join_attempt(account_id: i64, account_name: &str, attempt: i32, max_attempts: i32, success: bool) {
+pub fn emit_join_attempt(
+    account_id: i64,
+    account_name: &str,
+    attempt: i32,
+    max_attempts: i32,
+    success: bool,
+) {
     if let Some(emitter) = global_emitter() {
         emitter.join_attempt(account_id, account_name, attempt, max_attempts, success);
     }

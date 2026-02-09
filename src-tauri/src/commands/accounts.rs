@@ -1,9 +1,9 @@
 //! Account commands
 
+use crate::commands::{error_response, CommandResult};
 use crate::db::{self, Account, AccountCreate};
 use crate::startup_checks::StartupCheckError;
 use crate::workers::WORKER_MANAGER;
-use crate::commands::{CommandResult, error_response};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ pub fn accounts_list() -> CommandResult<Vec<Account>> {
 pub fn account_create(payload: AccountCreate) -> CommandResult<Account> {
     let conn = db::get_conn().map_err(error_response)?;
     let id = db::create_account(&conn, &payload).map_err(error_response)?;
-    
+
     // Return the created account
     let accounts = db::list_accounts(&conn).map_err(error_response)?;
     accounts
@@ -42,7 +42,7 @@ pub fn account_create(payload: AccountCreate) -> CommandResult<Account> {
 pub async fn account_delete(account_id: i64) -> CommandResult<()> {
     // First stop the worker if running
     let _ = WORKER_MANAGER.stop_account(account_id).await;
-    
+
     // Get the user_id before deleting the account (needed for session folder path)
     let user_id: Option<i64> = {
         let conn = db::get_conn().map_err(error_response)?;
@@ -50,18 +50,19 @@ pub async fn account_delete(account_id: i64) -> CommandResult<()> {
             "SELECT user_id FROM accounts WHERE id = ?1",
             params![account_id],
             |row| row.get(0),
-        ).ok()
+        )
+        .ok()
     };
-    
+
     // Delete the account from database
     {
         let conn = db::get_conn().map_err(error_response)?;
         db::delete_account(&conn, account_id).map_err(error_response)?;
     }
-    
+
     // Delete the session folder if it exists
     let sessions_dir = get_sessions_dir();
-    
+
     // Try to delete by user_id first (preferred)
     if let Some(uid) = user_id {
         let session_dir = sessions_dir.join(format!("account_{}", uid));
@@ -73,28 +74,38 @@ pub async fn account_delete(account_id: i64) -> CommandResult<()> {
             }
         }
     }
-    
+
     // Also try by account_id (fallback for older sessions)
     let session_dir_by_id = sessions_dir.join(format!("account_{}", account_id));
     if session_dir_by_id.exists() {
         if let Err(e) = std::fs::remove_dir_all(&session_dir_by_id) {
-            log::warn!("Failed to delete session folder {:?}: {}", session_dir_by_id, e);
+            log::warn!(
+                "Failed to delete session folder {:?}: {}",
+                session_dir_by_id,
+                e
+            );
         } else {
             log::info!("Deleted session folder: {:?}", session_dir_by_id);
         }
     }
-    
+
     Ok(())
 }
 
 #[command]
 pub async fn account_start(account_id: i64) -> CommandResult<()> {
-    WORKER_MANAGER.start_account(account_id).await.map_err(error_response)
+    WORKER_MANAGER
+        .start_account(account_id)
+        .await
+        .map_err(error_response)
 }
 
 #[command]
 pub async fn account_stop(account_id: i64) -> CommandResult<()> {
-    WORKER_MANAGER.stop_account(account_id).await.map_err(error_response)
+    WORKER_MANAGER
+        .stop_account(account_id)
+        .await
+        .map_err(error_response)
 }
 
 #[command]
@@ -110,7 +121,10 @@ pub async fn accounts_start_all() -> CommandResult<Vec<BulkStartReport>> {
     let mut set: JoinSet<BulkStartReport> = JoinSet::new();
     let mut active: usize = 0;
 
-    for account in accounts.into_iter().filter(|a| a.status == "stopped" || a.status == "error") {
+    for account in accounts
+        .into_iter()
+        .filter(|a| a.status == "stopped" || a.status == "error")
+    {
         // Spawn a task for this account
         let acc = account.clone();
         set.spawn(async move { start_account_with_checks(&acc).await });
@@ -118,14 +132,18 @@ pub async fn accounts_start_all() -> CommandResult<Vec<BulkStartReport>> {
 
         if active >= concurrency_limit {
             if let Some(res) = set.join_next().await {
-                if let Ok(report) = res { reports.push(report); }
+                if let Ok(report) = res {
+                    reports.push(report);
+                }
                 active -= 1;
             }
         }
     }
 
     while let Some(res) = set.join_next().await {
-        if let Ok(report) = res { reports.push(report); }
+        if let Ok(report) = res {
+            reports.push(report);
+        }
     }
 
     Ok(reports)
@@ -154,7 +172,9 @@ pub async fn accounts_start_selected(account_ids: Vec<i64>) -> CommandResult<Vec
             active += 1;
             if active >= concurrency_limit {
                 if let Some(res) = set.join_next().await {
-                    if let Ok(report) = res { reports.push(report); }
+                    if let Ok(report) = res {
+                        reports.push(report);
+                    }
                     active -= 1;
                 }
             }
@@ -173,7 +193,9 @@ pub async fn accounts_start_selected(account_ids: Vec<i64>) -> CommandResult<Vec
     }
 
     while let Some(res) = set.join_next().await {
-        if let Ok(report) = res { reports.push(report); }
+        if let Ok(report) = res {
+            reports.push(report);
+        }
     }
 
     Ok(reports)
@@ -251,7 +273,7 @@ pub fn account_update(payload: AccountUpdate) -> CommandResult<Account> {
             return Err(error_response("Account name cannot be empty"));
         }
     }
-    
+
     conn.execute(
         "UPDATE accounts SET 
             account_name = COALESCE(?1, account_name),
@@ -269,8 +291,9 @@ pub fn account_update(payload: AccountUpdate) -> CommandResult<Account> {
             payload.join_cooldown_seconds_override,
             payload.id,
         ],
-    ).map_err(error_response)?;
-    
+    )
+    .map_err(error_response)?;
+
     // Return the updated account
     let accounts = db::list_accounts(&conn).map_err(error_response)?;
     accounts

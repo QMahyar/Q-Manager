@@ -72,10 +72,17 @@ impl TelethonClient {
             .spawn()
             .map_err(|e| format!("Failed to spawn telethon worker: {}", e))?;
 
-        let stdin = child.stdin.take().ok_or_else(|| "Failed to open worker stdin".to_string())?;
-        let stdout = child.stdout.take().ok_or_else(|| "Failed to open worker stdout".to_string())?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Failed to open worker stdin".to_string())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Failed to open worker stdout".to_string())?;
 
-        let responses: Arc<Mutex<HashMap<String, TelethonResponse>>> = Arc::new(Mutex::new(HashMap::new()));
+        let responses: Arc<Mutex<HashMap<String, TelethonResponse>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let events: Arc<Mutex<Vec<TelethonEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let responses_clone = Arc::clone(&responses);
         let events_clone = Arc::clone(&events);
@@ -87,7 +94,9 @@ impl TelethonClient {
                     guard.insert(response.id.clone(), response);
                 } else if let Ok(event_wrapper) = serde_json::from_str::<serde_json::Value>(&line) {
                     if let Some(event_value) = event_wrapper.get("event") {
-                        if let Ok(event) = serde_json::from_value::<TelethonEvent>(event_value.clone()) {
+                        if let Ok(event) =
+                            serde_json::from_value::<TelethonEvent>(event_value.clone())
+                        {
                             let mut guard = events_clone.lock().unwrap();
                             guard.push(event);
                         }
@@ -114,7 +123,9 @@ impl TelethonClient {
         let payload = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         {
             let mut stdin = self.stdin.lock().unwrap();
-            stdin.write_all(payload.as_bytes()).map_err(|e| e.to_string())?;
+            stdin
+                .write_all(payload.as_bytes())
+                .map_err(|e| e.to_string())?;
             stdin.write_all(b"\n").map_err(|e| e.to_string())?;
             stdin.flush().map_err(|e| e.to_string())?;
         }
@@ -162,7 +173,10 @@ pub fn get_worker_path() -> String {
 pub fn assert_worker_exists() -> Result<(), crate::errors::ErrorResponse> {
     let path = get_worker_path();
     if !std::path::Path::new(&path).exists() {
-        return Err(error_response(format!("Telethon worker not found at {}", path)));
+        return Err(error_response(format!(
+            "Telethon worker not found at {}",
+            path
+        )));
     }
     Ok(())
 }

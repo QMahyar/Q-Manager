@@ -33,10 +33,11 @@ fn get_accounts() -> Vec<TrayAccount> {
         Err(_) => return vec![],
     };
 
-    let mut stmt = match conn.prepare("SELECT id, account_name, status FROM accounts ORDER BY account_name") {
-        Ok(s) => s,
-        Err(_) => return vec![],
-    };
+    let mut stmt =
+        match conn.prepare("SELECT id, account_name, status FROM accounts ORDER BY account_name") {
+            Ok(s) => s,
+            Err(_) => return vec![],
+        };
 
     let accounts = stmt
         .query_map([], |row| {
@@ -95,9 +96,11 @@ pub fn setup_tray_wry(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::e
 }
 
 /// Build the tray menu with current account states
-pub fn build_tray_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, Box<dyn std::error::Error>> {
+pub fn build_tray_menu<R: Runtime>(
+    app: &tauri::App<R>,
+) -> Result<Menu<R>, Box<dyn std::error::Error>> {
     let accounts = get_accounts();
-    
+
     // Separate running and stopped accounts
     let stopped_accounts: Vec<_> = accounts
         .iter()
@@ -111,20 +114,38 @@ pub fn build_tray_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, Box<d
     // Create menu items
     let show_hide = MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
     let separator1 = MenuItem::with_id(app, "sep1", "─────────────", false, None::<&str>)?;
-    
+
     // Start submenu
     let start_submenu = if stopped_accounts.is_empty() {
         Submenu::with_items(
             app,
             "▶ Start",
             true,
-            &[&MenuItem::with_id(app, "no_stopped", "(No stopped accounts)", false, None::<&str>)?],
+            &[&MenuItem::with_id(
+                app,
+                "no_stopped",
+                "(No stopped accounts)",
+                false,
+                None::<&str>,
+            )?],
         )?
     } else {
         let mut items: Vec<MenuItem<R>> = Vec::new();
         // Add "Start All" option first
-        items.push(MenuItem::with_id(app, "start_all", "Start All", true, None::<&str>)?);
-        items.push(MenuItem::with_id(app, "start_sep", "─────────────", false, None::<&str>)?);
+        items.push(MenuItem::with_id(
+            app,
+            "start_all",
+            "Start All",
+            true,
+            None::<&str>,
+        )?);
+        items.push(MenuItem::with_id(
+            app,
+            "start_sep",
+            "─────────────",
+            false,
+            None::<&str>,
+        )?);
         for acc in &stopped_accounts {
             items.push(MenuItem::with_id(
                 app,
@@ -134,7 +155,10 @@ pub fn build_tray_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, Box<d
                 None::<&str>,
             )?);
         }
-        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<R>> = items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<R>).collect();
+        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<R>> = items
+            .iter()
+            .map(|i| i as &dyn tauri::menu::IsMenuItem<R>)
+            .collect();
         Submenu::with_items(app, "▶ Start", true, &item_refs)?
     };
 
@@ -144,13 +168,31 @@ pub fn build_tray_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, Box<d
             app,
             "■ Stop",
             true,
-            &[&MenuItem::with_id(app, "no_running", "(No running accounts)", false, None::<&str>)?],
+            &[&MenuItem::with_id(
+                app,
+                "no_running",
+                "(No running accounts)",
+                false,
+                None::<&str>,
+            )?],
         )?
     } else {
         let mut items: Vec<MenuItem<R>> = Vec::new();
         // Add "Stop All" option first
-        items.push(MenuItem::with_id(app, "stop_all", "Stop All", true, None::<&str>)?);
-        items.push(MenuItem::with_id(app, "stop_sep", "─────────────", false, None::<&str>)?);
+        items.push(MenuItem::with_id(
+            app,
+            "stop_all",
+            "Stop All",
+            true,
+            None::<&str>,
+        )?);
+        items.push(MenuItem::with_id(
+            app,
+            "stop_sep",
+            "─────────────",
+            false,
+            None::<&str>,
+        )?);
         for acc in &running_accounts {
             items.push(MenuItem::with_id(
                 app,
@@ -160,7 +202,10 @@ pub fn build_tray_menu<R: Runtime>(app: &tauri::App<R>) -> Result<Menu<R>, Box<d
                 None::<&str>,
             )?);
         }
-        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<R>> = items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<R>).collect();
+        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<R>> = items
+            .iter()
+            .map(|i| i as &dyn tauri::menu::IsMenuItem<R>)
+            .collect();
         Submenu::with_items(app, "■ Stop", true, &item_refs)?
     };
 
@@ -208,29 +253,55 @@ pub fn refresh_tray_menu(app: &AppHandle<tauri::Wry>) {
 }
 
 /// Build tray menu using AppHandle (for refresh)
-fn build_tray_menu_for_handle(app: &AppHandle<tauri::Wry>) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+fn build_tray_menu_for_handle(
+    app: &AppHandle<tauri::Wry>,
+) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let accounts = get_accounts();
-    
+
     // Separate running and stopped accounts
-    let stopped_accounts: Vec<_> = accounts.iter().filter(|a| a.status == "stopped" || a.status == "error").collect();
-    let running_accounts: Vec<_> = accounts.iter().filter(|a| a.status == "running" || a.status == "starting").collect();
+    let stopped_accounts: Vec<_> = accounts
+        .iter()
+        .filter(|a| a.status == "stopped" || a.status == "error")
+        .collect();
+    let running_accounts: Vec<_> = accounts
+        .iter()
+        .filter(|a| a.status == "running" || a.status == "starting")
+        .collect();
 
     // Create menu items
     let show_hide = MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
     let separator1 = MenuItem::with_id(app, "sep1", "─────────────", false, None::<&str>)?;
-    
+
     // Start submenu
     let start_submenu = if stopped_accounts.is_empty() {
         Submenu::with_items(
             app,
             "▶ Start",
             true,
-            &[&MenuItem::with_id(app, "no_stopped", "(No stopped accounts)", false, None::<&str>)?],
+            &[&MenuItem::with_id(
+                app,
+                "no_stopped",
+                "(No stopped accounts)",
+                false,
+                None::<&str>,
+            )?],
         )?
     } else {
         let mut items: Vec<MenuItem<tauri::Wry>> = Vec::new();
-        items.push(MenuItem::with_id(app, "start_all", "Start All", true, None::<&str>)?);
-        items.push(MenuItem::with_id(app, "start_sep", "─────────────", false, None::<&str>)?);
+        items.push(MenuItem::with_id(
+            app,
+            "start_all",
+            "Start All",
+            true,
+            None::<&str>,
+        )?);
+        items.push(MenuItem::with_id(
+            app,
+            "start_sep",
+            "─────────────",
+            false,
+            None::<&str>,
+        )?);
         for acc in &stopped_accounts {
             items.push(MenuItem::with_id(
                 app,
@@ -240,7 +311,10 @@ fn build_tray_menu_for_handle(app: &AppHandle<tauri::Wry>) -> Result<Menu<tauri:
                 None::<&str>,
             )?);
         }
-        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = items
+            .iter()
+            .map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>)
+            .collect();
         Submenu::with_items(app, "▶ Start", true, &item_refs)?
     };
 
@@ -250,12 +324,30 @@ fn build_tray_menu_for_handle(app: &AppHandle<tauri::Wry>) -> Result<Menu<tauri:
             app,
             "■ Stop",
             true,
-            &[&MenuItem::with_id(app, "no_running", "(No running accounts)", false, None::<&str>)?],
+            &[&MenuItem::with_id(
+                app,
+                "no_running",
+                "(No running accounts)",
+                false,
+                None::<&str>,
+            )?],
         )?
     } else {
         let mut items: Vec<MenuItem<tauri::Wry>> = Vec::new();
-        items.push(MenuItem::with_id(app, "stop_all", "Stop All", true, None::<&str>)?);
-        items.push(MenuItem::with_id(app, "stop_sep", "─────────────", false, None::<&str>)?);
+        items.push(MenuItem::with_id(
+            app,
+            "stop_all",
+            "Stop All",
+            true,
+            None::<&str>,
+        )?);
+        items.push(MenuItem::with_id(
+            app,
+            "stop_sep",
+            "─────────────",
+            false,
+            None::<&str>,
+        )?);
         for acc in &running_accounts {
             items.push(MenuItem::with_id(
                 app,
@@ -265,7 +357,10 @@ fn build_tray_menu_for_handle(app: &AppHandle<tauri::Wry>) -> Result<Menu<tauri:
                 None::<&str>,
             )?);
         }
-        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+        let item_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = items
+            .iter()
+            .map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>)
+            .collect();
         Submenu::with_items(app, "■ Stop", true, &item_refs)?
     };
 

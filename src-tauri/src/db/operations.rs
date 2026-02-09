@@ -1,7 +1,7 @@
 //! Database operations for Q Manager
 //! CRUD operations for all tables.
 
-use rusqlite::{params, Connection, Result, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -132,9 +132,9 @@ pub fn list_accounts(conn: &Connection) -> Result<Vec<Account>> {
         "SELECT id, account_name, telegram_name, phone, user_id, status, last_seen_at,
                 api_id_override, api_hash_override, join_max_attempts_override,
                 join_cooldown_seconds_override, created_at, updated_at
-         FROM accounts ORDER BY id"
+         FROM accounts ORDER BY id",
     )?;
-    
+
     let accounts = stmt.query_map([], |row| {
         Ok(Account {
             id: row.get(0)?,
@@ -152,7 +152,7 @@ pub fn list_accounts(conn: &Connection) -> Result<Vec<Account>> {
             updated_at: row.get(12)?,
         })
     })?;
-    
+
     accounts.collect()
 }
 
@@ -220,10 +220,9 @@ pub struct Phase {
 }
 
 pub fn list_phases(conn: &Connection) -> Result<Vec<Phase>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, name, display_name, priority FROM phases ORDER BY priority DESC"
-    )?;
-    
+    let mut stmt =
+        conn.prepare("SELECT id, name, display_name, priority FROM phases ORDER BY priority DESC")?;
+
     let phases = stmt.query_map([], |row| {
         Ok(Phase {
             id: row.get(0)?,
@@ -232,7 +231,7 @@ pub fn list_phases(conn: &Connection) -> Result<Vec<Phase>> {
             priority: row.get(3)?,
         })
     })?;
-    
+
     phases.collect()
 }
 
@@ -253,9 +252,9 @@ pub struct PhasePattern {
 pub fn list_phase_patterns(conn: &Connection, phase_id: i64) -> Result<Vec<PhasePattern>> {
     let mut stmt = conn.prepare(
         "SELECT id, phase_id, pattern, is_regex, enabled, priority 
-         FROM phase_patterns WHERE phase_id = ?1 ORDER BY priority DESC"
+         FROM phase_patterns WHERE phase_id = ?1 ORDER BY priority DESC",
     )?;
-    
+
     let patterns = stmt.query_map(params![phase_id], |row| {
         Ok(PhasePattern {
             id: row.get(0)?,
@@ -266,7 +265,7 @@ pub fn list_phase_patterns(conn: &Connection, phase_id: i64) -> Result<Vec<Phase
             priority: row.get(5)?,
         })
     })?;
-    
+
     patterns.collect()
 }
 
@@ -295,7 +294,10 @@ pub fn create_phase_pattern(conn: &Connection, data: &PhasePatternCreate) -> Res
 }
 
 pub fn delete_phase_pattern(conn: &Connection, pattern_id: i64) -> Result<()> {
-    conn.execute("DELETE FROM phase_patterns WHERE id = ?1", params![pattern_id])?;
+    conn.execute(
+        "DELETE FROM phase_patterns WHERE id = ?1",
+        params![pattern_id],
+    )?;
     Ok(())
 }
 
@@ -315,9 +317,9 @@ pub struct Action {
 pub fn list_actions(conn: &Connection) -> Result<Vec<Action>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, button_type, random_fallback_enabled, is_two_step
-         FROM actions ORDER BY name"
+         FROM actions ORDER BY name",
     )?;
-    
+
     let actions = stmt.query_map([], |row| {
         Ok(Action {
             id: row.get(0)?,
@@ -327,7 +329,7 @@ pub fn list_actions(conn: &Connection) -> Result<Vec<Action>> {
             is_two_step: row.get::<_, i32>(4)? != 0,
         })
     })?;
-    
+
     actions.collect()
 }
 
@@ -376,9 +378,9 @@ pub struct ActionPattern {
 pub fn list_action_patterns(conn: &Connection, action_id: i64) -> Result<Vec<ActionPattern>> {
     let mut stmt = conn.prepare(
         "SELECT id, action_id, pattern, is_regex, enabled, priority, step
-         FROM action_patterns WHERE action_id = ?1 ORDER BY priority DESC"
+         FROM action_patterns WHERE action_id = ?1 ORDER BY priority DESC",
     )?;
-    
+
     let patterns = stmt.query_map(params![action_id], |row| {
         Ok(ActionPattern {
             id: row.get(0)?,
@@ -390,16 +392,16 @@ pub fn list_action_patterns(conn: &Connection, action_id: i64) -> Result<Vec<Act
             step: row.get(6)?,
         })
     })?;
-    
+
     patterns.collect()
 }
 
 pub fn list_all_action_patterns(conn: &Connection) -> Result<Vec<ActionPattern>> {
     let mut stmt = conn.prepare(
         "SELECT id, action_id, pattern, is_regex, enabled, priority, step
-         FROM action_patterns ORDER BY priority DESC"
+         FROM action_patterns ORDER BY priority DESC",
     )?;
-    
+
     let patterns = stmt.query_map([], |row| {
         Ok(ActionPattern {
             id: row.get(0)?,
@@ -411,7 +413,7 @@ pub fn list_all_action_patterns(conn: &Connection) -> Result<Vec<ActionPattern>>
             step: row.get(6)?,
         })
     })?;
-    
+
     patterns.collect()
 }
 
@@ -434,9 +436,9 @@ pub fn list_all_phase_patterns_with_info(conn: &Connection) -> Result<Vec<PhaseP
                 p.name, p.priority as phase_priority
          FROM phase_patterns pp
          JOIN phases p ON pp.phase_id = p.id
-         ORDER BY p.priority DESC, pp.priority DESC"
+         ORDER BY p.priority DESC, pp.priority DESC",
     )?;
-    
+
     let patterns = stmt.query_map([], |row| {
         Ok(PhasePatternWithInfo {
             pattern: PhasePattern {
@@ -451,7 +453,7 @@ pub fn list_all_phase_patterns_with_info(conn: &Connection) -> Result<Vec<PhaseP
             phase_priority: row.get(7)?,
         })
     })?;
-    
+
     patterns.collect()
 }
 
@@ -461,35 +463,42 @@ pub fn list_all_phase_patterns_with_info(conn: &Connection) -> Result<Vec<PhaseP
 
 /// Get target rule for an account+action (returns override if exists, else default)
 /// Optimized: Single query using COALESCE instead of two separate queries
-pub fn get_effective_target_rule(conn: &Connection, account_id: i64, action_id: i64) -> Result<Option<String>> {
+pub fn get_effective_target_rule(
+    conn: &Connection,
+    account_id: i64,
+    action_id: i64,
+) -> Result<Option<String>> {
     conn.query_row(
         "SELECT COALESCE(
             (SELECT rule_json FROM target_overrides WHERE account_id = ?1 AND action_id = ?2),
             (SELECT rule_json FROM target_defaults WHERE action_id = ?2)
         )",
         params![account_id, action_id],
-        |row| row.get(0)
-    ).optional()
+        |row| row.get(0),
+    )
+    .optional()
 }
 
 /// Get blacklist entries for an account+action
 pub fn get_blacklist(conn: &Connection, account_id: i64, action_id: i64) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT button_text FROM target_blacklist WHERE account_id = ?1 AND action_id = ?2"
+        "SELECT button_text FROM target_blacklist WHERE account_id = ?1 AND action_id = ?2",
     )?;
-    
-    let entries = stmt.query_map(params![account_id, action_id], |row| {
-        row.get(0)
-    })?;
-    
+
+    let entries = stmt.query_map(params![account_id, action_id], |row| row.get(0))?;
+
     entries.collect()
 }
 
 /// Get effective delay settings for an account+action (override or default)
 /// Optimized: Single query with COALESCE and LEFT JOINs instead of two separate queries
-pub fn get_effective_delay(conn: &Connection, account_id: i64, action_id: i64) -> Result<(i32, i32)> {
-    use crate::constants::{DEFAULT_DELAY_MIN_SECONDS, DEFAULT_DELAY_MAX_SECONDS};
-    
+pub fn get_effective_delay(
+    conn: &Connection,
+    account_id: i64,
+    action_id: i64,
+) -> Result<(i32, i32)> {
+    use crate::constants::{DEFAULT_DELAY_MAX_SECONDS, DEFAULT_DELAY_MIN_SECONDS};
+
     conn.query_row(
         "SELECT 
             COALESCE(o.min_seconds, d.min_seconds, ?3) as min_seconds,
@@ -497,23 +506,32 @@ pub fn get_effective_delay(conn: &Connection, account_id: i64, action_id: i64) -
          FROM (SELECT 1) AS dummy
          LEFT JOIN delay_overrides o ON o.account_id = ?1 AND o.action_id = ?2
          LEFT JOIN delay_defaults d ON d.action_id = ?2",
-        params![account_id, action_id, DEFAULT_DELAY_MIN_SECONDS, DEFAULT_DELAY_MAX_SECONDS],
-        |row| Ok((row.get(0)?, row.get(1)?))
+        params![
+            account_id,
+            action_id,
+            DEFAULT_DELAY_MIN_SECONDS,
+            DEFAULT_DELAY_MAX_SECONDS
+        ],
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )
 }
 
 /// Get target pairs for a two-step action
-pub fn get_target_pairs(conn: &Connection, account_id: i64, action_id: i64) -> Result<Vec<(String, String)>> {
+pub fn get_target_pairs(
+    conn: &Connection,
+    account_id: i64,
+    action_id: i64,
+) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
         "SELECT target_a, target_b FROM target_pairs 
          WHERE account_id = ?1 AND action_id = ?2 
-         ORDER BY order_index"
+         ORDER BY order_index",
     )?;
-    
+
     let pairs = stmt.query_map(params![account_id, action_id], |row| {
         Ok((row.get(0)?, row.get(1)?))
     })?;
-    
+
     pairs.collect()
 }
 
@@ -531,8 +549,9 @@ pub fn get_action(conn: &Connection, action_id: i64) -> Result<Option<Action>> {
                 random_fallback_enabled: row.get::<_, i32>(3)? != 0,
                 is_two_step: row.get::<_, i32>(4)? != 0,
             })
-        }
-    ).optional()
+        },
+    )
+    .optional()
 }
 
 /// Get account by ID
@@ -559,8 +578,9 @@ pub fn get_account(conn: &Connection, account_id: i64) -> Result<Option<Account>
                 created_at: row.get(11)?,
                 updated_at: row.get(12)?,
             })
-        }
-    ).optional()
+        },
+    )
+    .optional()
 }
 
 /// Update last_seen_at timestamp for an account

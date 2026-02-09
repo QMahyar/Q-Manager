@@ -1,12 +1,12 @@
 //! Worker-level caching for patterns, actions, and targets.
-//! 
+//!
 //! Provides TTL-based caching to reduce database queries during message processing.
 //! NOTE: Currently caches detection patterns and actions; per-account target caching is future work.
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use std::sync::Mutex;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use crate::db::{Action, ActionPattern, PhasePatternWithInfo};
 
@@ -47,7 +47,7 @@ impl<T: Clone> CachedItem<T> {
     fn is_expired(&self) -> bool {
         Instant::now() > self.expires_at
     }
-    
+
     fn get_if_valid(&self) -> Option<&T> {
         if self.is_expired() {
             None
@@ -95,7 +95,8 @@ impl WorkerCache {
             return Ok(data);
         }
 
-        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
         self.set_cached(&self.phase_patterns, data.clone())?;
         Ok(data)
@@ -134,7 +135,8 @@ impl WorkerCache {
             return Ok(data);
         }
 
-        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
         self.set_cached(&self.actions, data.clone())?;
         Ok(data)
@@ -149,7 +151,8 @@ impl WorkerCache {
             return Ok(data);
         }
 
-        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
         self.set_cached(&self.action_patterns, data.clone())?;
         Ok(data)
@@ -206,7 +209,12 @@ impl WorkerCache {
     }
 
     /// Get cached action config or load from DB
-    pub fn get_action_config<F>(&self, account_id: i64, action_id: i64, loader: F) -> Result<ActionConfig, String>
+    pub fn get_action_config<F>(
+        &self,
+        account_id: i64,
+        action_id: i64,
+        loader: F,
+    ) -> Result<ActionConfig, String>
     where
         F: FnOnce() -> Result<ActionConfig, String>,
     {
@@ -214,13 +222,18 @@ impl WorkerCache {
             return Ok(data);
         }
 
-        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
         self.set_cached_config(account_id, action_id, data.clone())?;
         Ok(data)
     }
 
-    fn get_cached_config(&self, account_id: i64, action_id: i64) -> Result<Option<ActionConfig>, String> {
+    fn get_cached_config(
+        &self,
+        account_id: i64,
+        action_id: i64,
+    ) -> Result<Option<ActionConfig>, String> {
         let cache = self.action_configs.lock().map_err(|e| e.to_string())?;
         if let Some(item) = cache.get(&(account_id, action_id)) {
             if let Some(data) = item.get_if_valid() {
@@ -231,15 +244,31 @@ impl WorkerCache {
         Ok(None)
     }
 
-    pub fn set_action_config(&self, account_id: i64, action_id: i64, data: ActionConfig) -> Result<(), String> {
+    pub fn set_action_config(
+        &self,
+        account_id: i64,
+        action_id: i64,
+        data: ActionConfig,
+    ) -> Result<(), String> {
         let mut cache = self.action_configs.lock().map_err(|e| e.to_string())?;
-        cache.insert((account_id, action_id), CachedItem::new(data, DEFAULT_CACHE_TTL));
+        cache.insert(
+            (account_id, action_id),
+            CachedItem::new(data, DEFAULT_CACHE_TTL),
+        );
         Ok(())
     }
 
-    fn set_cached_config(&self, account_id: i64, action_id: i64, data: ActionConfig) -> Result<(), String> {
+    fn set_cached_config(
+        &self,
+        account_id: i64,
+        action_id: i64,
+        data: ActionConfig,
+    ) -> Result<(), String> {
         let mut cache = self.action_configs.lock().map_err(|e| e.to_string())?;
-        cache.insert((account_id, action_id), CachedItem::new(data, DEFAULT_CACHE_TTL));
+        cache.insert(
+            (account_id, action_id),
+            CachedItem::new(data, DEFAULT_CACHE_TTL),
+        );
         Ok(())
     }
 
@@ -253,7 +282,7 @@ impl WorkerCache {
         } else {
             0.0
         };
-        
+
         CacheStats {
             hits,
             misses,
@@ -277,7 +306,7 @@ pub struct CacheStats {
 }
 
 /// Global shared cache for all workers (for immutable data like patterns)
-pub static SHARED_CACHE: once_cell::sync::Lazy<Arc<WorkerCache>> = 
+pub static SHARED_CACHE: once_cell::sync::Lazy<Arc<WorkerCache>> =
     once_cell::sync::Lazy::new(|| Arc::new(WorkerCache::new()));
 
 /// Get the shared worker cache

@@ -12,9 +12,9 @@ use tauri::command;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
+use crate::commands::{error_response, CommandResult};
 use crate::db;
 use crate::telethon;
-use crate::commands::{CommandResult, error_response};
 
 /// Get the sessions directory path
 fn get_sessions_dir() -> PathBuf {
@@ -46,12 +46,9 @@ pub struct ImportResult {
 
 /// Import a Telethon session from a directory or ZIP file
 #[command]
-pub fn account_import(
-    source_path: String,
-    account_name: String,
-) -> CommandResult<ImportResult> {
+pub fn account_import(source_path: String, account_name: String) -> CommandResult<ImportResult> {
     let source = PathBuf::from(&source_path);
-    
+
     if !source.exists() {
         return Ok(ImportResult {
             success: false,
@@ -63,15 +60,16 @@ pub fn account_import(
 
     // Create account in database first
     let conn = db::get_conn().map_err(error_response)?;
-    
+
     conn.execute(
         "INSERT INTO accounts (account_name, status, created_at, updated_at) 
          VALUES (?1, 'stopped', datetime('now'), datetime('now'))",
         params![account_name],
-    ).map_err(error_response)?;
-    
+    )
+    .map_err(error_response)?;
+
     let account_id = conn.last_insert_rowid();
-    
+
     // Create session directory
     let session_dir = get_account_session_dir(account_id);
     let copy_result: CommandResult<()> = (|| {
@@ -82,7 +80,7 @@ pub fn account_import(
             // Extract ZIP
             let file = fs::File::open(&source).map_err(error_response)?;
             let mut archive = zip::ZipArchive::new(file).map_err(error_response)?;
-            
+
             for i in 0..archive.len() {
                 let mut file = archive.by_index(i).map_err(error_response)?;
                 let outpath = match file.enclosed_name() {
@@ -211,7 +209,10 @@ pub fn account_import(
 /// Returns Ok(Some((user_id, telegram_name, phone))) if valid
 /// Returns Ok(None) if Telethon worker not available or session needs re-login
 /// Returns Err if validation definitively failed
-fn validate_imported_session(session_dir: &PathBuf, _account_id: i64) -> CommandResult<Option<(i64, Option<String>, Option<String>)>> {
+fn validate_imported_session(
+    session_dir: &PathBuf,
+    _account_id: i64,
+) -> CommandResult<Option<(i64, Option<String>, Option<String>)>> {
     if telethon::assert_worker_exists().is_err() {
         log::info!("Telethon worker not available, skipping session validation");
         return Ok(None);
@@ -237,11 +238,21 @@ fn validate_imported_session(session_dir: &PathBuf, _account_id: i64) -> Command
         }
     };
 
-    let session_path = session_dir.join("telethon.session").to_string_lossy().to_string();
-    let client = telethon::TelethonClient::spawn(api_id, &api_hash, &session_path).map_err(error_response)?;
-    let response = client.request("state", serde_json::json!({})).map_err(error_response)?;
+    let session_path = session_dir
+        .join("telethon.session")
+        .to_string_lossy()
+        .to_string();
+    let client = telethon::TelethonClient::spawn(api_id, &api_hash, &session_path)
+        .map_err(error_response)?;
+    let response = client
+        .request("state", serde_json::json!({}))
+        .map_err(error_response)?;
     if !response.ok {
-        return Err(error_response(response.error.unwrap_or_else(|| "Telethon worker error".to_string())));
+        return Err(error_response(
+            response
+                .error
+                .unwrap_or_else(|| "Telethon worker error".to_string()),
+        ));
     }
 
     let payload = response.payload.unwrap_or(serde_json::json!({}));
@@ -250,10 +261,25 @@ fn validate_imported_session(session_dir: &PathBuf, _account_id: i64) -> Command
     }
 
     let user_id = payload.get("user_id").and_then(|v| v.as_i64()).unwrap_or(0);
-    let first_name = payload.get("first_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let last_name = payload.get("last_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let phone = payload.get("phone").and_then(|v| v.as_str()).map(|v| v.to_string());
-    let telegram_name = if last_name.is_empty() { first_name.clone() } else { format!("{} {}", first_name, last_name) };
+    let first_name = payload
+        .get("first_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let last_name = payload
+        .get("last_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let phone = payload
+        .get("phone")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    let telegram_name = if last_name.is_empty() {
+        first_name.clone()
+    } else {
+        format!("{} {}", first_name, last_name)
+    };
 
     let _ = client.shutdown();
 
@@ -269,19 +295,19 @@ fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
     }
-    
+
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let path = entry.path();
         let dest_path = dst.join(entry.file_name());
-        
+
         if path.is_dir() {
             copy_dir_recursive(&path, &dest_path)?;
         } else {
             fs::copy(&path, &dest_path)?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -314,15 +340,17 @@ pub fn account_export(
 ) -> CommandResult<ExportResult> {
     // Get account info
     let conn = db::get_conn().map_err(error_response)?;
-    
-    let (account_name, user_id): (String, Option<i64>) = conn.query_row(
-        "SELECT account_name, user_id FROM accounts WHERE id = ?1",
-        params![account_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).map_err(error_response)?;
-    
+
+    let (account_name, user_id): (String, Option<i64>) = conn
+        .query_row(
+            "SELECT account_name, user_id FROM accounts WHERE id = ?1",
+            params![account_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(error_response)?;
+
     drop(conn); // Release lock
-    
+
     // Get session directory - try by user_id first (login flow), then by account_id (import flow)
     let sessions_dir = get_sessions_dir();
     let session_dir = if let Some(uid) = user_id {
@@ -335,17 +363,18 @@ pub fn account_export(
     } else {
         get_account_session_dir(account_id)
     };
-    
+
     if !session_dir.exists() {
         return Ok(ExportResult {
             success: false,
             path: String::new(),
-            message: "Session directory not found. Account may not have been logged in.".to_string(),
+            message: "Session directory not found. Account may not have been logged in."
+                .to_string(),
         });
     }
 
     let dest = PathBuf::from(&dest_path);
-    
+
     match format {
         ExportFormat::Zip => {
             // Create ZIP file
@@ -354,21 +383,22 @@ pub fn account_export(
             } else {
                 dest.join(format!("{}_session.zip", account_name))
             };
-            
+
             if let Some(parent) = zip_path.parent() {
                 fs::create_dir_all(parent).map_err(error_response)?;
             }
-            
+
             let file = fs::File::create(&zip_path).map_err(error_response)?;
             let mut zip = ZipWriter::new(file);
-            let options = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Deflated);
-            
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
             // Add all files from session directory
-            add_dir_to_zip(&mut zip, &session_dir, &session_dir, options).map_err(error_response)?;
-            
+            add_dir_to_zip(&mut zip, &session_dir, &session_dir, options)
+                .map_err(error_response)?;
+
             zip.finish().map_err(error_response)?;
-            
+
             Ok(ExportResult {
                 success: true,
                 path: zip_path.to_string_lossy().to_string(),
@@ -378,9 +408,9 @@ pub fn account_export(
         ExportFormat::Folder => {
             // Copy to destination folder
             let folder_path = dest.join(format!("{}_session", account_name));
-            
+
             copy_dir_recursive(&session_dir, &folder_path).map_err(error_response)?;
-            
+
             Ok(ExportResult {
                 success: true,
                 path: folder_path.to_string_lossy().to_string(),
@@ -405,7 +435,7 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?
             .to_string_lossy()
             .to_string();
-        
+
         if path.is_dir() {
             zip.add_directory(&name, options)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
@@ -420,7 +450,7 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -428,12 +458,14 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
 #[command]
 pub fn account_session_path(account_id: i64) -> CommandResult<Option<String>> {
     let conn = db::get_conn().map_err(error_response)?;
-    let user_id: Option<i64> = conn.query_row(
-        "SELECT user_id FROM accounts WHERE id = ?1",
-        params![account_id],
-        |row| row.get(0),
-    ).ok();
-    
+    let user_id: Option<i64> = conn
+        .query_row(
+            "SELECT user_id FROM accounts WHERE id = ?1",
+            params![account_id],
+            |row| row.get(0),
+        )
+        .ok();
+
     let sessions_dir = get_sessions_dir();
     let session_dir = if let Some(uid) = user_id {
         let dir_by_uid = sessions_dir.join(format!("account_{}", uid));
@@ -445,7 +477,7 @@ pub fn account_session_path(account_id: i64) -> CommandResult<Option<String>> {
     } else {
         get_account_session_dir(account_id)
     };
-    
+
     if session_dir.exists() {
         Ok(Some(session_dir.to_string_lossy().to_string()))
     } else {

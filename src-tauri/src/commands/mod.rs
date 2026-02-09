@@ -1,25 +1,25 @@
 //! Tauri commands for Q Manager
 //! All IPC commands exposed to the frontend.
 
-mod settings;
 mod accounts;
-mod phases;
 mod actions;
-mod login;
 mod group_slots;
-mod targets;
 mod import_export;
+mod login;
+mod phases;
+mod settings;
 mod startup_checks;
+mod targets;
 
-pub use settings::*;
 pub use accounts::*;
-pub use phases::*;
 pub use actions::*;
-pub use login::*;
 pub use group_slots::*;
-pub use targets::*;
 pub use import_export::*;
+pub use login::*;
+pub use phases::*;
+pub use settings::*;
 pub use startup_checks::*;
+pub use targets::*;
 
 use crate::errors::{AppError, ErrorResponse};
 

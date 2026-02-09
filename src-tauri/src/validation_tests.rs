@@ -86,30 +86,30 @@ mod tests {
         // Test that sanitization doesn't break valid inputs
         let name = "Valid_Name-123";
         assert!(validate_account_name(name).is_ok());
-        
+
         let phone = "+1234567890";
         assert!(validate_phone_number(phone).is_ok());
     }
-    
+
     #[test]
     fn test_validate_delay() {
         assert!(validate_delay(2, 5).is_ok());
         assert!(validate_delay(0, 10).is_ok());
     }
-    
+
     #[test]
     fn test_validate_delay_invalid() {
         assert!(validate_delay(-1, 5).is_err()); // Negative min
         assert!(validate_delay(10, 5).is_err()); // Min > Max
     }
-    
+
     #[test]
     fn test_validate_button_type() {
         assert!(validate_button_type("player_list").is_ok());
         assert!(validate_button_type("yes_no").is_ok());
         assert!(validate_button_type("fixed").is_ok());
     }
-    
+
     #[test]
     fn test_validate_button_type_invalid() {
         assert!(validate_button_type("invalid_type").is_err());

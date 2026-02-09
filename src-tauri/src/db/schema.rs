@@ -14,26 +14,30 @@ fn ensure_settings_column(conn: &Connection, column_name: &str, column_def: &str
         }
     }
     if !exists {
-        let sql = format!("ALTER TABLE settings ADD COLUMN {} {}", column_name, column_def);
+        let sql = format!(
+            "ALTER TABLE settings ADD COLUMN {} {}",
+            column_name, column_def
+        );
         conn.execute(&sql, [])?;
     }
     Ok(())
 }
-
 
 /// Initialize the database schema
 pub fn init_db(conn: &Connection) -> Result<()> {
     // ========================================================================
     // Database Configuration (Performance & Reliability)
     // ========================================================================
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         PRAGMA journal_mode = WAL;           -- Write-Ahead Logging for better concurrency
         PRAGMA synchronous = NORMAL;         -- Good balance of safety and performance
         PRAGMA foreign_keys = ON;            -- Enforce referential integrity
         PRAGMA busy_timeout = 5000;          -- 5 second timeout on lock contention
         PRAGMA cache_size = -64000;          -- 64MB page cache
         PRAGMA temp_store = MEMORY;          -- Store temp tables in memory
-    ")?;
+    ",
+    )?;
 
     // Schema version table
     conn.execute(
@@ -84,9 +88,18 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     ensure_settings_column(conn, "theme_mode", "TEXT NOT NULL DEFAULT 'system'")?;
     ensure_settings_column(conn, "theme_palette", "TEXT NOT NULL DEFAULT 'zinc'")?;
     ensure_settings_column(conn, "theme_variant", "TEXT NOT NULL DEFAULT 'subtle'")?;
-    conn.execute("UPDATE settings SET theme_mode = 'system' WHERE theme_mode IS NULL", [])?;
-    conn.execute("UPDATE settings SET theme_palette = 'zinc' WHERE theme_palette IS NULL", [])?;
-    conn.execute("UPDATE settings SET theme_variant = 'subtle' WHERE theme_variant IS NULL", [])?;
+    conn.execute(
+        "UPDATE settings SET theme_mode = 'system' WHERE theme_mode IS NULL",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE settings SET theme_palette = 'zinc' WHERE theme_palette IS NULL",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE settings SET theme_variant = 'subtle' WHERE theme_variant IS NULL",
+        [],
+    )?;
 
     // Accounts table
     conn.execute(
@@ -304,37 +317,37 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     // ========================================================================
     // Additional Performance Indexes
     // ========================================================================
-    
+
     // Target overrides: frequently queried by account_id for listing
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_target_overrides_account ON target_overrides(account_id)",
         [],
     )?;
-    
+
     // Delay overrides: composite index for effective delay lookups
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_delay_overrides_account_action ON delay_overrides(account_id, action_id)",
         [],
     )?;
-    
+
     // Accounts: status filtering for batch operations (start all stopped, etc.)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status)",
         [],
     )?;
-    
+
     // Phase patterns: optimized for detection pipeline loading (enabled patterns by priority)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_phase_patterns_enabled ON phase_patterns(enabled, priority DESC)",
         [],
     )?;
-    
+
     // Action patterns: optimized for detection pipeline loading
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_action_patterns_enabled ON action_patterns(enabled, priority DESC)",
         [],
     )?;
-    
+
     // Blacklist: unique constraint to prevent duplicate entries
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklist_unique ON target_blacklist(account_id, action_id, button_text)",

@@ -1,11 +1,13 @@
 //! Action commands
 
+use crate::commands::{error_response, CommandResult};
 use crate::db::{self, Action, ActionCreate, ActionPattern};
-use crate::validation::{validate_display_name, validate_button_type, validate_pattern, validate_priority};
+use crate::validation::{
+    validate_button_type, validate_display_name, validate_pattern, validate_priority,
+};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use tauri::command;
-use crate::commands::{CommandResult, error_response};
 
 #[command]
 pub fn actions_list() -> CommandResult<Vec<Action>> {
@@ -18,10 +20,10 @@ pub fn action_create(payload: ActionCreate) -> CommandResult<Action> {
     // Validate inputs
     validate_display_name(&payload.name).map_err(error_response)?;
     validate_button_type(&payload.button_type).map_err(error_response)?;
-    
+
     let conn = db::get_conn().map_err(error_response)?;
     let id = db::create_action(&conn, &payload).map_err(error_response)?;
-    
+
     Ok(Action {
         id,
         name: payload.name,
@@ -51,9 +53,9 @@ pub fn action_update(payload: ActionUpdate) -> CommandResult<Action> {
     // Validate inputs
     validate_display_name(&payload.name).map_err(error_response)?;
     validate_button_type(&payload.button_type).map_err(error_response)?;
-    
+
     let conn = db::get_conn().map_err(error_response)?;
-    
+
     conn.execute(
         "UPDATE actions SET name = ?1, button_type = ?2, 
          random_fallback_enabled = ?3, is_two_step = ?4 WHERE id = ?5",
@@ -64,8 +66,9 @@ pub fn action_update(payload: ActionUpdate) -> CommandResult<Action> {
             payload.is_two_step as i32,
             payload.id,
         ],
-    ).map_err(error_response)?;
-    
+    )
+    .map_err(error_response)?;
+
     Ok(Action {
         id: payload.id,
         name: payload.name,
@@ -97,9 +100,9 @@ pub fn action_pattern_create(payload: ActionPatternCreate) -> CommandResult<Acti
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;
     validate_priority(payload.priority).map_err(error_response)?;
-    
+
     let conn = db::get_conn().map_err(error_response)?;
-    
+
     conn.execute(
         "INSERT INTO action_patterns (action_id, pattern, is_regex, enabled, priority, step)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -111,10 +114,11 @@ pub fn action_pattern_create(payload: ActionPatternCreate) -> CommandResult<Acti
             payload.priority,
             payload.step,
         ],
-    ).map_err(error_response)?;
-    
+    )
+    .map_err(error_response)?;
+
     let id = conn.last_insert_rowid();
-    
+
     Ok(ActionPattern {
         id,
         action_id: payload.action_id,
@@ -129,8 +133,11 @@ pub fn action_pattern_create(payload: ActionPatternCreate) -> CommandResult<Acti
 #[command]
 pub fn action_pattern_delete(pattern_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
-    conn.execute("DELETE FROM action_patterns WHERE id = ?1", params![pattern_id])
-        .map_err(error_response)?;
+    conn.execute(
+        "DELETE FROM action_patterns WHERE id = ?1",
+        params![pattern_id],
+    )
+    .map_err(error_response)?;
     Ok(())
 }
 
@@ -149,16 +156,18 @@ pub fn action_pattern_update(payload: ActionPatternUpdate) -> CommandResult<Acti
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;
     validate_priority(payload.priority).map_err(error_response)?;
-    
+
     let conn = db::get_conn().map_err(error_response)?;
-    
+
     // Get the action_id first
-    let action_id: i64 = conn.query_row(
-        "SELECT action_id FROM action_patterns WHERE id = ?1",
-        params![payload.id],
-        |row| row.get(0)
-    ).map_err(error_response)?;
-    
+    let action_id: i64 = conn
+        .query_row(
+            "SELECT action_id FROM action_patterns WHERE id = ?1",
+            params![payload.id],
+            |row| row.get(0),
+        )
+        .map_err(error_response)?;
+
     conn.execute(
         "UPDATE action_patterns SET pattern = ?1, is_regex = ?2, enabled = ?3, priority = ?4, step = ?5
          WHERE id = ?6",
@@ -171,7 +180,7 @@ pub fn action_pattern_update(payload: ActionPatternUpdate) -> CommandResult<Acti
             payload.id,
         ],
     ).map_err(error_response)?;
-    
+
     Ok(ActionPattern {
         id: payload.id,
         action_id,

@@ -3,8 +3,8 @@
 //! Provides validation functions for user inputs to prevent invalid data
 //! from being stored in the database.
 
-use regex::Regex;
 use crate::constants::*;
+use regex::Regex;
 
 /// Validation error type
 #[derive(Debug, Clone)]
@@ -40,7 +40,10 @@ pub fn validate_regex_pattern(pattern: &str) -> ValidationResult<()> {
     if pattern.len() > MAX_PATTERN_LENGTH {
         return Err(ValidationError {
             field: "pattern".to_string(),
-            message: format!("Pattern exceeds maximum length of {} characters", MAX_PATTERN_LENGTH),
+            message: format!(
+                "Pattern exceeds maximum length of {} characters",
+                MAX_PATTERN_LENGTH
+            ),
         });
     }
 
@@ -67,7 +70,10 @@ pub fn validate_pattern(pattern: &str, is_regex: bool) -> ValidationResult<()> {
     if pattern.len() > MAX_PATTERN_LENGTH {
         return Err(ValidationError {
             field: "pattern".to_string(),
-            message: format!("Pattern exceeds maximum length of {} characters", MAX_PATTERN_LENGTH),
+            message: format!(
+                "Pattern exceeds maximum length of {} characters",
+                MAX_PATTERN_LENGTH
+            ),
         });
     }
 
@@ -92,14 +98,20 @@ pub fn validate_delay(min_seconds: i32, max_seconds: i32) -> ValidationResult<()
     if min_seconds < MIN_DELAY_SECONDS {
         return Err(ValidationError {
             field: "min_seconds".to_string(),
-            message: format!("Minimum delay cannot be less than {} seconds", MIN_DELAY_SECONDS),
+            message: format!(
+                "Minimum delay cannot be less than {} seconds",
+                MIN_DELAY_SECONDS
+            ),
         });
     }
 
     if max_seconds < MIN_DELAY_SECONDS {
         return Err(ValidationError {
             field: "max_seconds".to_string(),
-            message: format!("Maximum delay cannot be less than {} seconds", MIN_DELAY_SECONDS),
+            message: format!(
+                "Maximum delay cannot be less than {} seconds",
+                MIN_DELAY_SECONDS
+            ),
         });
     }
 
@@ -157,7 +169,7 @@ pub fn validate_priority(priority: i32) -> ValidationResult<()> {
 /// Validate account name
 pub fn validate_account_name(name: &str) -> ValidationResult<()> {
     let trimmed = name.trim();
-    
+
     if trimmed.is_empty() {
         return Err(ValidationError {
             field: "account_name".to_string(),
@@ -168,7 +180,10 @@ pub fn validate_account_name(name: &str) -> ValidationResult<()> {
     if trimmed.len() > MAX_ACCOUNT_NAME_LENGTH {
         return Err(ValidationError {
             field: "account_name".to_string(),
-            message: format!("Account name exceeds maximum length of {} characters", MAX_ACCOUNT_NAME_LENGTH),
+            message: format!(
+                "Account name exceeds maximum length of {} characters",
+                MAX_ACCOUNT_NAME_LENGTH
+            ),
         });
     }
 
@@ -178,7 +193,7 @@ pub fn validate_account_name(name: &str) -> ValidationResult<()> {
 /// Validate action name (internal identifier)
 pub fn validate_action_name(name: &str) -> ValidationResult<()> {
     let trimmed = name.trim();
-    
+
     if trimmed.is_empty() {
         return Err(ValidationError {
             field: "name".to_string(),
@@ -189,15 +204,22 @@ pub fn validate_action_name(name: &str) -> ValidationResult<()> {
     if trimmed.len() > MAX_ACTION_NAME_LENGTH {
         return Err(ValidationError {
             field: "name".to_string(),
-            message: format!("Action name exceeds maximum length of {} characters", MAX_ACTION_NAME_LENGTH),
+            message: format!(
+                "Action name exceeds maximum length of {} characters",
+                MAX_ACTION_NAME_LENGTH
+            ),
         });
     }
 
     // Action names should be lowercase alphanumeric with underscores
-    if !trimmed.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
         return Err(ValidationError {
             field: "name".to_string(),
-            message: "Action name must contain only lowercase letters, numbers, and underscores".to_string(),
+            message: "Action name must contain only lowercase letters, numbers, and underscores"
+                .to_string(),
         });
     }
 
@@ -207,7 +229,7 @@ pub fn validate_action_name(name: &str) -> ValidationResult<()> {
 /// Validate display name
 pub fn validate_display_name(name: &str) -> ValidationResult<()> {
     let trimmed = name.trim();
-    
+
     if trimmed.is_empty() {
         return Err(ValidationError {
             field: "display_name".to_string(),
@@ -218,7 +240,10 @@ pub fn validate_display_name(name: &str) -> ValidationResult<()> {
     if trimmed.len() > MAX_DISPLAY_NAME_LENGTH {
         return Err(ValidationError {
             field: "display_name".to_string(),
-            message: format!("Display name exceeds maximum length of {} characters", MAX_DISPLAY_NAME_LENGTH),
+            message: format!(
+                "Display name exceeds maximum length of {} characters",
+                MAX_DISPLAY_NAME_LENGTH
+            ),
         });
     }
 
@@ -232,7 +257,7 @@ pub fn validate_display_name(name: &str) -> ValidationResult<()> {
 /// Validate phone number format
 pub fn validate_phone_number(phone: &str) -> ValidationResult<()> {
     let trimmed = phone.trim();
-    
+
     if trimmed.is_empty() {
         return Err(ValidationError {
             field: "phone".to_string(),
@@ -243,14 +268,17 @@ pub fn validate_phone_number(phone: &str) -> ValidationResult<()> {
     if trimmed.len() > MAX_PHONE_LENGTH {
         return Err(ValidationError {
             field: "phone".to_string(),
-            message: format!("Phone number exceeds maximum length of {} characters", MAX_PHONE_LENGTH),
+            message: format!(
+                "Phone number exceeds maximum length of {} characters",
+                MAX_PHONE_LENGTH
+            ),
         });
     }
 
     // Phone should contain only digits, spaces, dashes, plus sign, and parentheses
-    let valid_chars = trimmed.chars().all(|c| {
-        c.is_ascii_digit() || c == '+' || c == '-' || c == ' ' || c == '(' || c == ')'
-    });
+    let valid_chars = trimmed
+        .chars()
+        .all(|c| c.is_ascii_digit() || c == '+' || c == '-' || c == ' ' || c == '(' || c == ')');
 
     if !valid_chars {
         return Err(ValidationError {
@@ -290,7 +318,7 @@ pub fn validate_api_id(api_id: i64) -> ValidationResult<()> {
 /// Validate Telegram API Hash
 pub fn validate_api_hash(api_hash: &str) -> ValidationResult<()> {
     let trimmed = api_hash.trim();
-    
+
     if trimmed.is_empty() {
         return Err(ValidationError {
             field: "api_hash".to_string(),
@@ -363,7 +391,10 @@ pub fn validate_button_type(button_type: &str) -> ValidationResult<()> {
         "player_list" | "yes_no" | "fixed" => Ok(()),
         _ => Err(ValidationError {
             field: "button_type".to_string(),
-            message: format!("Invalid button type '{}'. Must be one of: player_list, yes_no, fixed", button_type),
+            message: format!(
+                "Invalid button type '{}'. Must be one of: player_list, yes_no, fixed",
+                button_type
+            ),
         }),
     }
 }
@@ -435,7 +466,10 @@ pub fn validate_target_rule_json(json: &str) -> ValidationResult<()> {
             if arr.len() > MAX_TARGET_LIST_SIZE {
                 return Err(ValidationError {
                     field: "targets".to_string(),
-                    message: format!("Target list exceeds maximum size of {}", MAX_TARGET_LIST_SIZE),
+                    message: format!(
+                        "Target list exceeds maximum size of {}",
+                        MAX_TARGET_LIST_SIZE
+                    ),
                 });
             }
             for (index, item) in arr.iter().enumerate() {
@@ -568,7 +602,7 @@ pub fn validate_blacklist_json(json: &str) -> ValidationResult<()> {
 }
 
 // ============================================================================
-// Target Pairs Validation  
+// Target Pairs Validation
 // ============================================================================
 
 /// Validate target pairs JSON (for two-step actions like Cupid)
@@ -662,7 +696,11 @@ pub fn validate_ban_patterns_json(json: &str) -> ValidationResult<()> {
                         });
                     }
                     // If is_regex is true, validate the regex
-                    if obj.get("is_regex").and_then(|r| r.as_bool()).unwrap_or(false) {
+                    if obj
+                        .get("is_regex")
+                        .and_then(|r| r.as_bool())
+                        .unwrap_or(false)
+                    {
                         if let Err(e) = Regex::new(pattern) {
                             return Err(ValidationError {
                                 field: "ban_patterns_json".to_string(),
@@ -673,7 +711,10 @@ pub fn validate_ban_patterns_json(json: &str) -> ValidationResult<()> {
                 } else {
                     return Err(ValidationError {
                         field: "ban_patterns_json".to_string(),
-                        message: format!("Object at index {} must have a 'pattern' string field", i),
+                        message: format!(
+                            "Object at index {} must have a 'pattern' string field",
+                            i
+                        ),
                     });
                 }
             } else {

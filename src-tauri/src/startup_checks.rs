@@ -3,10 +3,10 @@
 //! These are system-level checks performed before starting accounts or
 //! performing critical operations, distinct from input validation.
 
-use std::path::PathBuf;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::db::{self};
 use crate::telethon;
@@ -90,7 +90,9 @@ pub struct DiagnosticsSnapshot {
 }
 
 pub async fn diagnostics_snapshot() -> DiagnosticsSnapshot {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let (total, running) = WORKER_MANAGER.get_worker_counts().await;
     DiagnosticsSnapshot {
         timestamp_ms: now.as_millis() as i64,
@@ -112,7 +114,10 @@ pub fn check_telethon_available() -> StartupCheckResult {
         result.add_error(StartupCheckError::blocking(
             "TELETHON_NOT_FOUND",
             "Telethon worker executable not found",
-            Some(&format!("{}\n\nEnsure the telethon-worker binary is placed next to the app executable.", e.message)),
+            Some(&format!(
+                "{}\n\nEnsure the telethon-worker binary is placed next to the app executable.",
+                e.message
+            )),
         ));
     }
 
@@ -131,14 +136,14 @@ pub fn is_telethon_available() -> bool {
 /// Pre-flight checks before starting an account
 pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
     let mut result = StartupCheckResult::success();
-    
+
     // 1. Check Telethon worker
     let telethon_check = check_telethon_available();
     if !telethon_check.can_proceed {
         return telethon_check;
     }
     result.merge(telethon_check);
-    
+
     // 2. Get account and settings
     let (account, settings) = match get_account_and_settings(account_id) {
         Ok(data) => data,
@@ -151,11 +156,14 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             return result;
         }
     };
-    
+
     // 3. Check API credentials
     let api_id = account.api_id_override.or(settings.api_id);
-    let api_hash = account.api_hash_override.clone().or(settings.api_hash.clone());
-    
+    let api_hash = account
+        .api_hash_override
+        .clone()
+        .or(settings.api_hash.clone());
+
     if api_id.is_none() {
         result.add_error(StartupCheckError::blocking(
             "API_ID_MISSING",
@@ -163,7 +171,7 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             Some("Configure API ID in Settings, or set an override in the account's edit page."),
         ));
     }
-    
+
     if api_hash.is_none() {
         result.add_error(StartupCheckError::blocking(
             "API_HASH_MISSING",
@@ -171,7 +179,7 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             Some("Configure API Hash in Settings, or set an override in the account's edit page."),
         ));
     }
-    
+
     // 4. Check session directory
     let sessions_dir = get_sessions_dir();
     let user_dir = account
@@ -189,7 +197,7 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
     } else {
         account_dir.clone()
     };
-    
+
     if !session_dir.exists() {
         let checked_locations = if let Some(ref dir) = user_dir {
             format!("{:?}\n{:?}", dir, account_dir)
@@ -212,10 +220,13 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             result.add_error(StartupCheckError::blocking(
                 "SESSION_NOT_READABLE",
                 "Cannot read session directory",
-                Some(&format!("Error: {}\n\nTry restarting the application or re-logging into the account.", e)),
+                Some(&format!(
+                    "Error: {}\n\nTry restarting the application or re-logging into the account.",
+                    e
+                )),
             ));
         }
-        
+
         // Check for Telethon session file
         let session_file = session_dir.join("telethon.session");
         if !session_file.exists() {
@@ -226,7 +237,7 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             ));
         }
     }
-    
+
     // 5. Check group slots (warning only)
     match get_enabled_group_slots(account_id) {
         Ok(slots) if slots.is_empty() => {
@@ -245,7 +256,7 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
         }
         _ => {}
     }
-    
+
     // 6. Check moderator bot IDs (warning only)
     if settings.main_bot_user_id.is_none() && settings.beta_bot_user_id.is_none() {
         result.add_error(StartupCheckError::warning(
@@ -254,7 +265,7 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             Some("Game phase detection won't work without moderator bot IDs.\n\nConfigure them in Settings."),
         ));
     }
-    
+
     result
 }
 
@@ -263,27 +274,30 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
 // ============================================================================
 
 /// Pre-flight checks before starting login flow
-pub fn check_can_login(api_id_override: Option<i64>, api_hash_override: Option<&str>) -> StartupCheckResult {
+pub fn check_can_login(
+    api_id_override: Option<i64>,
+    api_hash_override: Option<&str>,
+) -> StartupCheckResult {
     let mut result = StartupCheckResult::success();
-    
+
     // 1. Check Telethon worker
     let telethon_check = check_telethon_available();
     result.merge(telethon_check);
-    
+
     if !result.can_proceed {
         return result;
     }
-    
+
     // 2. Check API credentials
     let settings = db::get_conn()
         .ok()
         .and_then(|conn| db::get_settings(&conn).ok());
-    
+
     let effective_api_id = api_id_override.or_else(|| settings.as_ref().and_then(|s| s.api_id));
     let effective_api_hash = api_hash_override
         .map(String::from)
         .or_else(|| settings.as_ref().and_then(|s| s.api_hash.clone()));
-    
+
     if effective_api_id.is_none() {
         result.add_error(StartupCheckError::blocking(
             "API_ID_REQUIRED",
@@ -299,7 +313,7 @@ pub fn check_can_login(api_id_override: Option<i64>, api_hash_override: Option<&
             ));
         }
     }
-    
+
     if effective_api_hash.is_none() {
         result.add_error(StartupCheckError::blocking(
             "API_HASH_REQUIRED",
@@ -310,7 +324,10 @@ pub fn check_can_login(api_id_override: Option<i64>, api_hash_override: Option<&
         if hash.len() != 32 {
             result.add_error(StartupCheckError::blocking(
                 "API_HASH_INVALID",
-                &format!("API Hash must be exactly 32 characters (got {})", hash.len()),
+                &format!(
+                    "API Hash must be exactly 32 characters (got {})",
+                    hash.len()
+                ),
                 None,
             ));
         } else if !hash.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -321,7 +338,7 @@ pub fn check_can_login(api_id_override: Option<i64>, api_hash_override: Option<&
             ));
         }
     }
-    
+
     // 3. Check sessions directory is writable
     let sessions_dir = get_sessions_dir();
     if !sessions_dir.exists() {
@@ -339,7 +356,7 @@ pub fn check_can_login(api_id_override: Option<i64>, api_hash_override: Option<&
             Some(&format!("Error: {}", e)),
         ));
     }
-    
+
     result
 }
 
@@ -350,7 +367,7 @@ pub fn check_can_login(api_id_override: Option<i64>, api_hash_override: Option<&
 /// Comprehensive system check for app startup
 pub fn check_system() -> StartupCheckResult {
     let mut result = StartupCheckResult::success();
-    
+
     // 1. Check database
     if let Err(e) = db::get_conn() {
         result.add_error(StartupCheckError::blocking(
@@ -360,7 +377,7 @@ pub fn check_system() -> StartupCheckResult {
         ));
         return result;
     }
-    
+
     // 2. Check Telethon worker (warning if not found - user can still configure)
     let telethon_check = check_telethon_available();
     if !telethon_check.can_proceed {
@@ -372,7 +389,7 @@ pub fn check_system() -> StartupCheckResult {
             ));
         }
     }
-    
+
     // 3. Check settings (warnings for missing config)
     if let Ok(conn) = db::get_conn() {
         if let Ok(settings) = db::get_settings(&conn) {
@@ -383,7 +400,7 @@ pub fn check_system() -> StartupCheckResult {
                     Some("Configure API ID and API Hash in Settings before logging into accounts."),
                 ));
             }
-            
+
             if settings.main_bot_user_id.is_none() && settings.beta_bot_user_id.is_none() {
                 result.add_error(StartupCheckError::warning(
                     "MODERATOR_BOTS_NOT_SET",
@@ -393,7 +410,7 @@ pub fn check_system() -> StartupCheckResult {
             }
         }
     }
-    
+
     result
 }
 
@@ -411,21 +428,21 @@ fn get_sessions_dir() -> PathBuf {
 
 fn get_account_and_settings(account_id: i64) -> Result<(db::Account, db::Settings), String> {
     let conn = db::get_conn().map_err(|e| e.to_string())?;
-    
+
     let accounts = db::list_accounts(&conn).map_err(|e| e.to_string())?;
     let account = accounts
         .into_iter()
         .find(|a| a.id == account_id)
         .ok_or_else(|| format!("Account {} not found", account_id))?;
-    
+
     let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
-    
+
     Ok((account, settings))
 }
 
 fn get_enabled_group_slots(account_id: i64) -> Result<Vec<i64>, String> {
     let conn = db::get_conn().map_err(|e| e.to_string())?;
-    
+
     let mut stmt = conn
         .prepare(
             "SELECT group_id FROM account_group_slots 

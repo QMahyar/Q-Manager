@@ -1,42 +1,40 @@
 //! Q Manager - Werewolf Game Automation
-//! 
+//!
 //! This is the main library for the Tauri backend.
 
-mod db;
 mod commands;
-mod telethon;
-mod workers;
-mod tray;
-mod utils;
-mod logging;
-mod ipc;
+pub mod constants;
+mod db;
 pub mod errors;
 pub mod events;
-pub mod constants;
-pub mod validation;
+mod ipc;
+mod logging;
 pub mod startup_checks;
+mod telethon;
+mod tray;
+mod utils;
+pub mod validation;
+mod workers;
 
 #[cfg(all(test, not(windows)))]
 mod validation_tests;
 
 use commands::*;
-use tauri::Manager;
 use std::time::Instant;
+use tauri::Manager;
 
 /// Initialize logging
 fn init_logging() {
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info")
-    ).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_logging();
-    
+
     log::info!("Starting Q Manager...");
     let start = Instant::now();
-    
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -55,10 +53,10 @@ pub fn run() {
                 Ok(()) => log::info!("Telethon worker available"),
                 Err(e) => log::warn!("Telethon worker not available: {}", e.message),
             }
-            
+
             // Initialize global event emitter
             events::init_global_emitter(app.handle().clone());
-            
+
             // Setup system tray (with dynamic refresh support)
             if let Err(e) = tray::setup_tray_wry(app) {
                 log::error!("Failed to setup system tray: {}", e);

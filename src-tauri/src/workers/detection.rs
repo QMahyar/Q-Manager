@@ -1,26 +1,25 @@
 //! Detection pipeline for Q Manager
-//! 
+//!
 //! Processes incoming messages and detects:
 //! - Game phases (JoinTime, Join Confirmation, Game Start, Game End)
 //! - Action prompts (Vote, Kill, Eat, etc.)
 
-use regex::Regex;
-use once_cell::sync::Lazy;
+use crate::db::{Action, PhasePattern};
 use lru::LruCache;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use regex::Regex;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use parking_lot::Mutex;
-use crate::db::{PhasePattern, Action};
 
 use crate::constants::REGEX_CACHE_MAX_SIZE;
 
 /// LRU regex cache with Arc for cheap cloning
-static REGEX_CACHE: Lazy<Mutex<LruCache<String, Arc<Regex>>>> =
-    Lazy::new(|| {
-        let capacity = NonZeroUsize::new(REGEX_CACHE_MAX_SIZE).unwrap_or(NonZeroUsize::MIN);
-        Mutex::new(LruCache::new(capacity))
-    });
+static REGEX_CACHE: Lazy<Mutex<LruCache<String, Arc<Regex>>>> = Lazy::new(|| {
+    let capacity = NonZeroUsize::new(REGEX_CACHE_MAX_SIZE).unwrap_or(NonZeroUsize::MIN);
+    Mutex::new(LruCache::new(capacity))
+});
 
 /// Get or compile a regex pattern (uses LRU cache for efficient eviction)
 fn get_regex(pattern: &str) -> Result<Arc<Regex>, String> {
@@ -131,45 +130,58 @@ impl DetectionPipeline {
                 phase_priority,
             })
             .collect();
-        
+
         // Sort by phase priority (desc) then pattern priority (desc)
         self.phase_patterns.sort_by(|a, b| {
-            b.phase_priority.cmp(&a.phase_priority)
+            b.phase_priority
+                .cmp(&a.phase_priority)
                 .then_with(|| b.priority.cmp(&a.priority))
         });
     }
 
     /// Load action patterns
-    pub fn load_action_patterns(&mut self, actions: Vec<Action>, patterns: Vec<crate::db::ActionPattern>) {
+    pub fn load_action_patterns(
+        &mut self,
+        actions: Vec<Action>,
+        patterns: Vec<crate::db::ActionPattern>,
+    ) {
         let action_map: HashMap<i64, &Action> = actions.iter().map(|a| (a.id, a)).collect();
-        
+
         self.action_patterns = patterns
             .into_iter()
             .filter(|p| p.enabled)
             .filter_map(|p| {
-                action_map.get(&p.action_id).map(|action| CompiledActionPattern {
-                    id: p.id,
-                    action_id: p.action_id,
-                    action_name: action.name.clone(),
-                    pattern: p.pattern,
-                    is_regex: p.is_regex,
-                    priority: p.priority,
-                    step: p.step,
-                })
+                action_map
+                    .get(&p.action_id)
+                    .map(|action| CompiledActionPattern {
+                        id: p.id,
+                        action_id: p.action_id,
+                        action_name: action.name.clone(),
+                        pattern: p.pattern,
+                        is_regex: p.is_regex,
+                        priority: p.priority,
+                        step: p.step,
+                    })
             })
             .collect();
-        
+
         // Sort by priority (desc)
-        self.action_patterns.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.action_patterns
+            .sort_by(|a, b| b.priority.cmp(&a.priority));
     }
 
     /// Process a message and return all matches
     pub fn process(&self, event: &MessageEvent) -> Vec<DetectionResult> {
         let mut results = Vec::new();
-        
+
         // Check phase patterns
         for pattern in &self.phase_patterns {
-            if self.matches(&event.text, &pattern.pattern, pattern.is_regex, Some("phase")) {
+            if self.matches(
+                &event.text,
+                &pattern.pattern,
+                pattern.is_regex,
+                Some("phase"),
+            ) {
                 results.push(DetectionResult::Phase {
                     phase_name: pattern.phase_name.clone(),
                     pattern_id: pattern.id,
@@ -178,10 +190,15 @@ impl DetectionPipeline {
                 break;
             }
         }
-        
+
         // Check action patterns
         for pattern in &self.action_patterns {
-            if self.matches(&event.text, &pattern.pattern, pattern.is_regex, Some("action")) {
+            if self.matches(
+                &event.text,
+                &pattern.pattern,
+                pattern.is_regex,
+                Some("action"),
+            ) {
                 results.push(DetectionResult::Action {
                     action_id: pattern.action_id,
                     action_name: pattern.action_name.clone(),
@@ -191,7 +208,7 @@ impl DetectionPipeline {
                 });
             }
         }
-        
+
         // Sort all results by priority (already sorted, but combined list needs re-sort)
         results.sort_by(|a, b| {
             let priority_a = match a {
@@ -204,7 +221,7 @@ impl DetectionPipeline {
             };
             priority_b.cmp(&priority_a)
         });
-        
+
         results
     }
 
@@ -230,7 +247,7 @@ impl DetectionPipeline {
     pub fn phase_pattern_count(&self) -> usize {
         self.phase_patterns.len()
     }
-    
+
     /// Get count of loaded action patterns
     pub fn action_pattern_count(&self) -> usize {
         self.action_patterns.len()
