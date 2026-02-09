@@ -49,9 +49,19 @@ It is designed for multi-account operation with configurable rules and safe rate
 4) Configure targets per account
 5) Start accounts and monitor Activity Feed
 
+## Documentation
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Building and releasing Q-Manager
+- **[Testing Linux Packages](docs/TESTING_LINUX_PACKAGES.md)** - Comprehensive Linux package testing
+- **[Release Template](docs/RELEASE_TEMPLATE.md)** - Template for creating release notes
+- **[Contributing](CONTRIBUTING.md)** - Contribution guidelines
+- **[Changelog](CHANGELOG.md)** - Version history
+
 ## Development
 
 For GitHub releases: create a `v1.0.0` tag and a GitHub Release named `v1.0.0`. Attach installers when available.
+
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for complete build and release instructions.
 
 
 ```bash
