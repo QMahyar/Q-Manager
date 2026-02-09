@@ -632,18 +632,16 @@ impl AccountWorker {
         );
 
         // Check for ban warning in bot PMs
-        if is_bot_pm && !self.game_state.ban_warned {
-            if self.check_ban_warning(&message.text) {
-                self.game_state.ban_warned = true;
-                self.stop_join_attempts("ban warning received");
-                emit_log(
-                    self.config.account_id,
-                    &self.config.account_name,
-                    "warn",
-                    "Ban warning received from moderator bot. Join attempts stopped.",
-                );
-                // Don't return - still process the message for other detections
-            }
+        if is_bot_pm && !self.game_state.ban_warned && self.check_ban_warning(&message.text) {
+            self.game_state.ban_warned = true;
+            self.stop_join_attempts("ban warning received");
+            emit_log(
+                self.config.account_id,
+                &self.config.account_name,
+                "warn",
+                "Ban warning received from moderator bot. Join attempts stopped.",
+            );
+            // Don't return - still process the message for other detections
         }
 
         // Convert to detection event

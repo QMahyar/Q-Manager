@@ -519,7 +519,7 @@ pub fn validate_bot_user_id(user_id: Option<i64>) -> ValidationResult<()> {
 pub fn validate_bot_username(username: Option<&str>) -> ValidationResult<()> {
     match username {
         None => Ok(()),
-        Some(s) if s.is_empty() => Ok(()),
+        Some("") => Ok(()),
         Some(s) => {
             if s.len() > 64 {
                 return Err(ValidationError {
@@ -552,7 +552,7 @@ pub fn validate_group_id(group_id: Option<i64>) -> ValidationResult<()> {
 
 /// Validate group slot number
 pub fn validate_group_slot(slot: i32) -> ValidationResult<()> {
-    if slot < 1 || slot > 2 {
+    if !(1..=2).contains(&slot) {
         return Err(ValidationError {
             field: "group_slot".to_string(),
             message: "Group slot must be 1 or 2".to_string(),
