@@ -74,10 +74,24 @@ cargo test
 
 > On Windows, GUI-linked tests can fail due to system DLL entrypoints. Use `cargo check` instead.
 
-## Windows prerequisites
+## Platform Prerequisites
 
-- WebView2 Runtime
+### Windows
+- WebView2 Runtime (usually pre-installed on Windows 10/11)
 - Microsoft Visual C++ Redistributable (x64)
+
+### Linux
+Required system libraries:
+```bash
+# Ubuntu/Debian
+sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev
+
+# Arch Linux
+sudo pacman -S webkit2gtk gtk3 librsvg libappindicator-gtk3
+
+# Fedora
+sudo dnf install gtk3-devel webkit2gtk4.1-devel librsvg2-devel libappindicator-gtk3-devel
+```
 
 ## Release
 
