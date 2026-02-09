@@ -2,6 +2,10 @@ node_modules/
 node_modules
 .vscode/
 .DS_Store
+# Build artifacts
+dist/
+build/
+*.spec
 *.log
 *.tmp
 *.temp

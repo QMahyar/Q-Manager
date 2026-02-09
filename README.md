@@ -1,5 +1,12 @@
 # Q Manager
 
+[![CI](https://github.com/QMahyar/Q-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/QMahyar/Q-Manager/actions/workflows/ci.yml)
+[![Release](https://github.com/QMahyar/Q-Manager/actions/workflows/release.yml/badge.svg)](https://github.com/QMahyar/Q-Manager/actions/workflows/release.yml)
+[![Security](https://github.com/QMahyar/Q-Manager/actions/workflows/security.yml/badge.svg)](https://github.com/QMahyar/Q-Manager/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub release](https://img.shields.io/github/v/release/QMahyar/Q-Manager)](https://github.com/QMahyar/Q-Manager/releases/latest)
+[![GitHub issues](https://img.shields.io/github/issues/QMahyar/Q-Manager)](https://github.com/QMahyar/Q-Manager/issues)
+
 Q Manager is a cross-platform desktop app for automating Werewolf game interactions on Telegram.
 It manages multiple accounts, detects game phases, and executes actions based on configurable patterns and targets.
 The app combines a React + Vite frontend with a Rust + Tauri backend and a Telethon worker for Telegram connectivity.
