@@ -79,3 +79,6 @@ base64 = "0.22"
 # UUIDs
 uuid = { version = "1", features = ["v4"] }
 
+# Image processing
+image = "0.25"
+

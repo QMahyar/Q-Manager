@@ -38,7 +38,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": [
+      "../telethon-worker/dist/telethon-worker.exe"
+    ],
     "category": "Utility",
     "shortDescription": "Werewolf Game Automation",
     "longDescription": "Q Manager is a desktop application for automating Werewolf game interactions on Telegram.",

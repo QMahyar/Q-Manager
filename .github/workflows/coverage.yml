@@ -37,17 +37,17 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       
       - name: Generate coverage badge
-        uses: cicirello/jacoco-badge-generator@v2
-        with:
-          badges-directory: badges
-          generate-branches-badge: true
-          generate-summary: true
-      
+        run: |
+          mkdir -p badges
+          node -e "const fs=require('fs'); const {makeBadge}=require('badge-maker'); const summary=require('./coverage/coverage-summary.json'); const pct=summary.total.lines.pct; const color=pct>=90?'brightgreen':pct>=80?'green':pct>=70?'yellow':pct>=60?'orange':'red'; const svg=makeBadge({label:'coverage', message:`${pct}%`, color}); fs.writeFileSync('badges/coverage.svg', svg);"
+
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage/
+          path: |
+            coverage/
+            badges/
           retention-days: 30
 
   rust-coverage:

@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['E:\\AI code\\q-manager\\q-manager\\telethon-worker\\telethon_worker.py'],
+    ['E:\\AI code\\WerewolfBot\\q-manager\\telethon-worker\\telethon_worker.py'],
     pathex=[],
     binaries=[],
     datas=[],

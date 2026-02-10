@@ -37,6 +37,7 @@ import {
   createPhasePattern,
   deletePhasePattern,
   updatePhasePattern,
+  updatePhasePriority,
   reloadAllPatterns,
 } from "@/lib/api";
 import type { PhasePattern } from "@/lib/types";
@@ -62,6 +63,8 @@ export default function PhaseDetectionPage() {
   const [editPattern, setEditPattern] = useState("");
   const [editIsRegex, setEditIsRegex] = useState(false);
   const [editPriority, setEditPriority] = useState(0);
+  const [editPhaseOpen, setEditPhaseOpen] = useState(false);
+  const [phasePriority, setPhasePriority] = useState(0);
   const [isReloading, setIsReloading] = useState(false);
   
   // AutoAnimate for pattern list
@@ -145,6 +148,11 @@ export default function PhaseDetectionPage() {
     setEditPatternOpen(true);
   };
 
+  const openEditPhasePriority = (priorityValue: number) => {
+    setPhasePriority(priorityValue);
+    setEditPhaseOpen(true);
+  };
+
   const handleEditPattern = () => {
     if (patternToEdit && editPattern.trim()) {
       updatePatternMutation.mutate({
@@ -164,6 +172,27 @@ export default function PhaseDetectionPage() {
       is_regex: pattern.is_regex,
       enabled: !pattern.enabled,
       priority: pattern.priority,
+    });
+  };
+
+  const updatePhasePriorityMutation = useMutation({
+    mutationFn: updatePhasePriority,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["phases"] });
+      setEditPhaseOpen(false);
+      toast.success("Phase priority updated");
+    },
+    onError: (e) => toast.error("Failed to update phase priority", { description: getErrorMessage(e) }),
+  });
+
+  const handleUpdatePhasePriority = () => {
+    if (!selectedPhaseId) {
+      return;
+    }
+
+    updatePhasePriorityMutation.mutate({
+      phaseId: selectedPhaseId,
+      priority: phasePriority,
     });
   };
 
@@ -231,7 +260,16 @@ export default function PhaseDetectionPage() {
                         {getPhaseDescription(phase.name)}
                       </p>
                     </div>
-                    <Badge variant="outline">Priority: {phase.priority}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">Priority: {phase.priority}</Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEditPhasePriority(phase.priority)}
+                      >
+                        Edit Priority
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -432,6 +470,41 @@ export default function PhaseDetectionPage() {
               </Button>
               <Button variant="destructive" onClick={handleDeletePattern} disabled={deletePatternMutation.isPending}>
                 Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Phase Priority Dialog */}
+        <Dialog open={editPhaseOpen} onOpenChange={setEditPhaseOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Phase Priority</DialogTitle>
+              <DialogDescription>
+                Adjust the priority for this phase. Lower numbers = higher priority.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="phasePriority">Priority</Label>
+                <Input
+                  id="phasePriority"
+                  type="number"
+                  value={phasePriority}
+                  onChange={(e) => setPhasePriority(Number(e.target.value))}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Lower numbers = higher priority
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditPhaseOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdatePhasePriority}>
+                Save Changes
               </Button>
             </DialogFooter>
           </DialogContent>

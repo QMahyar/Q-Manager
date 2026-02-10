@@ -157,15 +157,27 @@ impl TelethonClient {
 }
 
 pub fn get_worker_path() -> String {
+    #[cfg(windows)]
+    let worker_name = "telethon-worker.exe";
+    #[cfg(not(windows))]
+    let worker_name = "telethon-worker";
+
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    #[cfg(windows)]
-    let worker_name = "telethon-worker.exe";
-    #[cfg(not(windows))]
-    let worker_name = "telethon-worker";
+    let candidates = [
+        exe_dir.join(worker_name),
+        exe_dir.join("resources").join(worker_name),
+        exe_dir.join("..").join("resources").join(worker_name),
+    ];
+
+    for candidate in candidates {
+        if candidate.exists() {
+            return candidate.to_string_lossy().to_string();
+        }
+    }
 
     exe_dir.join(worker_name).to_string_lossy().to_string()
 }

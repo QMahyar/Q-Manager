@@ -27,26 +27,29 @@ jobs:
       
       - name: Get existing release
         id: get-release
-        continue-on-error: true
         run: |
-          release=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          response=$(curl -s -w "\n%{http_code}" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${GITHUB_REF#refs/tags/}")
-          if [ $? -eq 0 ]; then
-            echo "id=$(echo $release | jq -r .id)" >> $GITHUB_OUTPUT
-            echo "upload_url=$(echo $release | jq -r .upload_url)" >> $GITHUB_OUTPUT
+          body=$(echo "$response" | head -n 1)
+          status=$(echo "$response" | tail -n 1)
+          if [ "$status" = "200" ]; then
+            id=$(echo "$body" | jq -r .id)
+            upload_url=$(echo "$body" | jq -r .upload_url)
+            echo "id=$id" >> $GITHUB_OUTPUT
+            echo "upload_url=$upload_url" >> $GITHUB_OUTPUT
           fi
       
       - name: Create Release
         id: create-release
-        if: steps.get-release.outcome == 'failure'
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.get-release.outputs.id == ''
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-tauri:
     name: Build Tauri App (${{ matrix.platform }})
@@ -130,6 +133,20 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       
+      - name: Configure bundle resources
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          config_path = Path('src-tauri/tauri.conf.json')
+          config = json.loads(config_path.read_text())
+          if "windows" in "${{ matrix.platform }}":
+              config["bundle"]["resources"] = ["../telethon-worker/dist/telethon-worker.exe"]
+          else:
+              config["bundle"]["resources"] = ["../telethon-worker/dist/telethon-worker"]
+          config_path.write_text(json.dumps(config, indent=2))
+          PY
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -149,7 +166,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $portableDir
           
           # Copy executable and dependencies
-          Copy-Item src-tauri/target/release/q-manager.exe $portableDir/
+          $exePath = Get-ChildItem -Path src-tauri/target/release -Filter q-manager.exe -Recurse | Select-Object -First 1
+          if (-not $exePath) { throw "q-manager.exe not found in src-tauri/target/release" }
+          Copy-Item $exePath.FullName $portableDir/
           Copy-Item telethon-worker/dist/telethon-worker.exe $portableDir/
           
           # Create portable ZIP
@@ -160,14 +179,14 @@ jobs:
       
       - name: Upload portable package (Windows)
         if: matrix.platform == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
           $zipName = "Q-Manager-$version-portable-win-x64.zip"
           
           # Upload using gh CLI
           gh release upload $env:GITHUB_REF_NAME $zipName --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Upload build artifacts (on failure)
         if: failure()
