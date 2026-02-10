@@ -10,13 +10,13 @@ permissions:
 
 jobs:
   create-release:
-    name: Create Release
+    name: Get or Create Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
-      release_id: ${{ steps.create-release.outputs.id }}
-      upload_url: ${{ steps.create-release.outputs.upload_url }}
+      release_id: ${{ steps.get-release.outputs.id || steps.create-release.outputs.id }}
+      upload_url: ${{ steps.get-release.outputs.upload_url || steps.create-release.outputs.upload_url }}
     
     steps:
       - uses: actions/checkout@v4
@@ -25,8 +25,20 @@ jobs:
         id: tag_name
         run: echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
       
+      - name: Get existing release
+        id: get-release
+        continue-on-error: true
+        run: |
+          release=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${GITHUB_REF#refs/tags/}")
+          if [ $? -eq 0 ]; then
+            echo "id=$(echo $release | jq -r .id)" >> $GITHUB_OUTPUT
+            echo "upload_url=$(echo $release | jq -r .upload_url)" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Create Release
         id: create-release
+        if: steps.get-release.outcome == 'failure'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
