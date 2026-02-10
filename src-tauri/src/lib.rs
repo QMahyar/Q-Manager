@@ -25,7 +25,10 @@ use tauri::Manager;
 
 /// Initialize logging
 fn init_logging() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    if let Err(err) = crate::logging::init() {
+        eprintln!("Failed to initialize logger: {}", err);
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

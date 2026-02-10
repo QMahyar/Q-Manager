@@ -16,7 +16,7 @@ interface TooltipProps {
 }
 
 const Tooltip: React.FC<TooltipProps> = ({ children }) => {
-  return <div className="relative inline-flex">{children}</div>
+  return <div className="group relative inline-flex">{children}</div>
 }
 
 interface TooltipTriggerProps {
@@ -26,6 +26,15 @@ interface TooltipTriggerProps {
 
 const TooltipTrigger = React.forwardRef<HTMLSpanElement, TooltipTriggerProps>(
   ({ children, asChild, ...props }, ref) => {
+    if (asChild && React.isValidElement(children)) {
+      const child = children as React.ReactElement<{ className?: string }>;
+      return React.cloneElement(child, {
+        ...props,
+        ref,
+        className: cn("cursor-help", child.props.className),
+      });
+    }
+
     return (
       <span ref={ref} className="group cursor-help" {...props}>
         {children}

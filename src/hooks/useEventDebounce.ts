@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 
 interface DebouncedEventOptions {
   /** Debounce delay in milliseconds */
@@ -30,48 +30,48 @@ export function useDebouncedEvent<T>(
   }, [handler]);
 
   useEffect(() => {
-    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    const unlistenPromise = listen<T>(eventName, (event) => {
+      const now = Date.now();
+      const payload = event.payload;
 
-    const setupListener = async () => {
-      unlisten = await listen<T>(eventName, (event) => {
-        const now = Date.now();
-        const payload = event.payload;
+      // Leading edge: call immediately if enough time has passed
+      if (leading && now - lastCallRef.current >= delay) {
+        lastCallRef.current = now;
+        handlerRef.current(payload);
+        return;
+      }
 
-        // Leading edge: call immediately if enough time has passed
-        if (leading && now - lastCallRef.current >= delay) {
-          lastCallRef.current = now;
-          handlerRef.current(payload);
-          return;
-        }
+      // Store the latest payload
+      pendingPayloadRef.current = payload;
 
-        // Store the latest payload
-        pendingPayloadRef.current = payload;
-
-        // Clear existing timeout
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-        }
-
-        // Set new timeout for trailing edge
-        timeoutRef.current = setTimeout(() => {
-          if (pendingPayloadRef.current !== null) {
-            lastCallRef.current = Date.now();
-            handlerRef.current(pendingPayloadRef.current);
-            pendingPayloadRef.current = null;
-          }
-        }, delay);
-      });
-    };
-
-    setupListener();
-
-    return () => {
+      // Clear existing timeout
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      if (unlisten) {
-        unlisten();
+
+      // Set new timeout for trailing edge
+      timeoutRef.current = setTimeout(() => {
+        if (pendingPayloadRef.current !== null) {
+          lastCallRef.current = Date.now();
+          handlerRef.current(pendingPayloadRef.current);
+          pendingPayloadRef.current = null;
+        }
+      }, delay);
+    });
+
+    return () => {
+      cancelled = true;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
+      void unlistenPromise.then((unlisten) => {
+        if (cancelled) {
+          unlisten();
+          return;
+        }
+        unlisten();
+      });
     };
   }, [eventName, delay, leading]);
 }
@@ -93,36 +93,36 @@ export function useBatchedEvent<T>(
   }, [handler]);
 
   useEffect(() => {
-    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    const unlistenPromise = listen<T>(eventName, (event) => {
+      batchRef.current.push(event.payload);
 
-    const setupListener = async () => {
-      unlisten = await listen<T>(eventName, (event) => {
-        batchRef.current.push(event.payload);
-
-        // Reset flush timer
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-        }
-
-        timeoutRef.current = setTimeout(() => {
-          if (batchRef.current.length > 0) {
-            const batch = [...batchRef.current];
-            batchRef.current = [];
-            handlerRef.current(batch);
-          }
-        }, batchInterval);
-      });
-    };
-
-    setupListener();
-
-    return () => {
+      // Reset flush timer
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      if (unlisten) {
-        unlisten();
+
+      timeoutRef.current = setTimeout(() => {
+        if (batchRef.current.length > 0) {
+          const batch = [...batchRef.current];
+          batchRef.current = [];
+          handlerRef.current(batch);
+        }
+      }, batchInterval);
+    });
+
+    return () => {
+      cancelled = true;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
+      void unlistenPromise.then((unlisten) => {
+        if (cancelled) {
+          unlisten();
+          return;
+        }
+        unlisten();
+      });
     };
   }, [eventName, batchInterval]);
 }
@@ -145,44 +145,44 @@ export function useThrottledEvent<T>(
   }, [handler]);
 
   useEffect(() => {
-    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    const unlistenPromise = listen<T>(eventName, (event) => {
+      const now = Date.now();
+      const timeSinceLastCall = now - lastCallRef.current;
 
-    const setupListener = async () => {
-      unlisten = await listen<T>(eventName, (event) => {
-        const now = Date.now();
-        const timeSinceLastCall = now - lastCallRef.current;
+      if (timeSinceLastCall >= interval) {
+        // Enough time has passed, call immediately
+        lastCallRef.current = now;
+        handlerRef.current(event.payload);
+      } else {
+        // Store for later and schedule
+        pendingRef.current = event.payload;
 
-        if (timeSinceLastCall >= interval) {
-          // Enough time has passed, call immediately
-          lastCallRef.current = now;
-          handlerRef.current(event.payload);
-        } else {
-          // Store for later and schedule
-          pendingRef.current = event.payload;
-
-          if (!timeoutRef.current) {
-            timeoutRef.current = setTimeout(() => {
-              timeoutRef.current = null;
-              if (pendingRef.current !== null) {
-                lastCallRef.current = Date.now();
-                handlerRef.current(pendingRef.current);
-                pendingRef.current = null;
-              }
-            }, interval - timeSinceLastCall);
-          }
+        if (!timeoutRef.current) {
+          timeoutRef.current = setTimeout(() => {
+            timeoutRef.current = null;
+            if (pendingRef.current !== null) {
+              lastCallRef.current = Date.now();
+              handlerRef.current(pendingRef.current);
+              pendingRef.current = null;
+            }
+          }, interval - timeSinceLastCall);
         }
-      });
-    };
-
-    setupListener();
+      }
+    });
 
     return () => {
+      cancelled = true;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      if (unlisten) {
+      void unlistenPromise.then((unlisten) => {
+        if (cancelled) {
+          unlisten();
+          return;
+        }
         unlisten();
-      }
+      });
     };
   }, [eventName, interval]);
 }

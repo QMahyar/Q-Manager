@@ -44,8 +44,8 @@ impl log::Log for QManagerLogger {
             target
         };
 
-        // Format: [LEVEL] [module] message
-        eprintln!("[{}] [{}] {}", level_str, module, record.args());
+        // Format: [QMANAGER][LEVEL][module] message
+        eprintln!("[QMANAGER][{}][{}] {}", level_str, module, record.args());
     }
 
     fn flush(&self) {}

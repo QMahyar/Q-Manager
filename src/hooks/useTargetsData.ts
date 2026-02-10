@@ -111,8 +111,8 @@ export function useTargetConfig(accountId: number, action: Action) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["targetOverrides", accountId] });
-      queryClient.invalidateQueries({ queryKey: ["delayOverrides", accountId] });
+      queryClient.invalidateQueries({ queryKey: ["targetOverride"] });
+      queryClient.invalidateQueries({ queryKey: ["delayOverride"] });
       queryClient.invalidateQueries({ queryKey: ["action-overrides"] });
       queryClient.invalidateQueries({ queryKey: ["account-overrides"] });
     },
@@ -192,8 +192,8 @@ export function useCopyTargets() {
     mutationFn: ({ fromId, toIds, actionIds }: { fromId: number; toIds: number[]; actionIds: number[] }) =>
       copyTargets(fromId, toIds, actionIds),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["targetOverrides"] });
-      queryClient.invalidateQueries({ queryKey: ["delayOverrides"] });
+      queryClient.invalidateQueries({ queryKey: ["targetOverride"] });
+      queryClient.invalidateQueries({ queryKey: ["delayOverride"] });
       queryClient.invalidateQueries({ queryKey: ["account-overrides"] });
       queryClient.invalidateQueries({ queryKey: ["action-overrides"] });
     },

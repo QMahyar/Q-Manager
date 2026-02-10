@@ -29,16 +29,16 @@ export function HelpTooltip({
 }: HelpTooltipProps) {
   const Icon = variant === "info" ? IconInfoCircle : IconHelpCircle;
 
+  const trigger = children || (
+    <span className={`inline-flex cursor-help ${className}`}>
+      <Icon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
+    </span>
+  );
+
   return (
     <TooltipProvider>
       <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          {children || (
-            <span className={`inline-flex cursor-help ${className}`}>
-              <Icon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
-            </span>
-          )}
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
         <TooltipContent side={side} align={align} className="max-w-xs">
           {content}
         </TooltipContent>

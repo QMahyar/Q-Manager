@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
 
 import { getSettings, updateSettings } from "@/lib/api";
 import type { ThemeMode, ThemePalette, ThemeVariant } from "@/lib/types";
@@ -84,30 +84,57 @@ export function ThemeProvider({
     root.setAttribute("data-variant", variant);
   }, [theme, palette, variant]);
 
-  const value = {
-    theme,
-    palette,
-    variant,
-    setTheme: (nextTheme: ThemeMode) => {
-      localStorage.setItem(storageKey, nextTheme);
-      setTheme(nextTheme);
-      if (isHydrated) {
-        updateSettings({ theme_mode: nextTheme }).catch(() => null);
-      }
+  const setThemeValue = useCallback(
+    (nextTheme: ThemeMode) => {
+      setTheme((current) => {
+        if (current === nextTheme) return current;
+        localStorage.setItem(storageKey, nextTheme);
+        if (isHydrated) {
+          updateSettings({ theme_mode: nextTheme }).catch(() => null);
+        }
+        return nextTheme;
+      });
     },
-    setPalette: (nextPalette: ThemePalette) => {
-      setPalette(nextPalette);
-      if (isHydrated) {
-        updateSettings({ theme_palette: nextPalette }).catch(() => null);
-      }
+    [isHydrated, storageKey]
+  );
+
+  const setPaletteValue = useCallback(
+    (nextPalette: ThemePalette) => {
+      setPalette((current) => {
+        if (current === nextPalette) return current;
+        if (isHydrated) {
+          updateSettings({ theme_palette: nextPalette }).catch(() => null);
+        }
+        return nextPalette;
+      });
     },
-    setVariant: (nextVariant: ThemeVariant) => {
-      setVariant(nextVariant);
-      if (isHydrated) {
-        updateSettings({ theme_variant: nextVariant }).catch(() => null);
-      }
+    [isHydrated]
+  );
+
+  const setVariantValue = useCallback(
+    (nextVariant: ThemeVariant) => {
+      setVariant((current) => {
+        if (current === nextVariant) return current;
+        if (isHydrated) {
+          updateSettings({ theme_variant: nextVariant }).catch(() => null);
+        }
+        return nextVariant;
+      });
     },
-  };
+    [isHydrated]
+  );
+
+  const value = useMemo(
+    () => ({
+      theme,
+      palette,
+      variant,
+      setTheme: setThemeValue,
+      setPalette: setPaletteValue,
+      setVariant: setVariantValue,
+    }),
+    [palette, setPaletteValue, setThemeValue, setVariantValue, theme, variant]
+  );
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>

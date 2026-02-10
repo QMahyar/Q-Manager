@@ -15,7 +15,7 @@ name = "q_manager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 # Tests on Windows hit system DLL entrypoint issues; run tests on non-Windows only
 # (cargo test still works on Linux/macOS)
-test = false
+test = true
 
 [[bin]]
 name = "q-manager"

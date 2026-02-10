@@ -84,21 +84,22 @@ export default function SettingsPage() {
 
   // Update form when settings load
   useEffect(() => {
-    if (settings) {
-      setApiId(settings.api_id?.toString() || "");
-      setApiHash(settings.api_hash || "");
-      setMainBotUserId(settings.main_bot_user_id?.toString() || "");
-      setMainBotUsername(settings.main_bot_username || "");
-      setBetaBotUserId(settings.beta_bot_user_id?.toString() || "");
-      setBetaBotUsername(settings.beta_bot_username || "");
-      setJoinMaxAttempts(settings.join_max_attempts_default);
-      setJoinCooldown(settings.join_cooldown_seconds_default);
-      setBanWarningPatterns(parseBanPatterns(settings.ban_warning_patterns_json));
-      setThemeMode(settings.theme_mode ?? theme);
-      setThemePalette(settings.theme_palette ?? palette);
-      setThemeVariant(settings.theme_variant ?? variant);
+    if (!settings || hasChanges) {
+      return;
     }
-  }, [settings, theme, palette, variant]);
+    setApiId(settings.api_id?.toString() || "");
+    setApiHash(settings.api_hash || "");
+    setMainBotUserId(settings.main_bot_user_id?.toString() || "");
+    setMainBotUsername(settings.main_bot_username || "");
+    setBetaBotUserId(settings.beta_bot_user_id?.toString() || "");
+    setBetaBotUsername(settings.beta_bot_username || "");
+    setJoinMaxAttempts(settings.join_max_attempts_default);
+    setJoinCooldown(settings.join_cooldown_seconds_default);
+    setBanWarningPatterns(parseBanPatterns(settings.ban_warning_patterns_json));
+    setThemeMode(settings.theme_mode ?? theme);
+    setThemePalette(settings.theme_palette ?? palette);
+    setThemeVariant(settings.theme_variant ?? variant);
+  }, [settings, theme, palette, variant, hasChanges]);
 
   // Validation handlers
   const validateApiIdField = (value: string) => {
@@ -226,9 +227,11 @@ export default function SettingsPage() {
   };
 
   const toggleBanPatternEnabled = (index: number) => {
-    const updated = [...banWarningPatterns];
-    updated[index].enabled = !updated[index].enabled;
-    setBanWarningPatterns(updated);
+    setBanWarningPatterns((prev) =>
+      prev.map((pattern, i) =>
+        i === index ? { ...pattern, enabled: !pattern.enabled } : pattern
+      )
+    );
     markChanged();
   };
 

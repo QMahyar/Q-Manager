@@ -106,12 +106,13 @@ export default function AccountEditPage() {
 
   // Initialize form state when data loads
   useEffect(() => {
-    if (account) {
-      setAccountName(account.account_name);
-      setJoinMaxAttemptsOverride(account.join_max_attempts_override?.toString() || "");
-      setJoinCooldownOverride(account.join_cooldown_seconds_override?.toString() || "");
+    if (!account || hasChanges) {
+      return;
     }
-  }, [account]);
+    setAccountName(account.account_name);
+    setJoinMaxAttemptsOverride(account.join_max_attempts_override?.toString() || "");
+    setJoinCooldownOverride(account.join_cooldown_seconds_override?.toString() || "");
+  }, [account, hasChanges]);
 
   useEffect(() => {
     if (groupSlots.length > 0) {
@@ -584,7 +585,7 @@ export default function AccountEditPage() {
                       <div className="font-medium">{group.title}</div>
                       <div className="text-sm text-muted-foreground">
                         {group.group_type}
-                        {group.member_count && ` • ${group.member_count} members`}
+                        {group.member_count !== null && ` • ${group.member_count} members`}
                       </div>
                     </div>
                   ))}

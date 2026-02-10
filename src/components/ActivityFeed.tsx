@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,7 @@ interface ActivityFeedProps {
   defaultCollapsed?: boolean;
 }
 
-const typeIcons: Record<ActivityItem["type"], React.ReactNode> = {
+const typeIcons: Record<ActivityItem["type"], ReactNode> = {
   status: <IconPlayerPlay className="size-4" />,
   phase: <IconClock className="size-4" />,
   action: <IconTarget className="size-4" />,

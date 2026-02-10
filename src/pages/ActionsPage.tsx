@@ -373,7 +373,7 @@ export default function ActionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody ref={actionsParent}>
-            {patternsToShow.sort((a, b) => b.priority - a.priority).map((pattern) => (
+            {[...patternsToShow].sort((a, b) => b.priority - a.priority).map((pattern) => (
               <TableRow key={pattern.id}>
                 <TableCell className="font-mono text-sm">{pattern.pattern}</TableCell>
                 <TableCell>
@@ -676,22 +676,6 @@ export default function ActionsPage() {
                 <Label htmlFor="editDisplayName">Action Name</Label>
                 <Input
                   id="editDisplayName"
-                  value={newActionName}
-                  onChange={(e) => {
-                    setNewActionName(e.target.value);
-                    const result = validateDisplayName(e.target.value);
-                    setActionErrors(prev => ({ ...prev, name: result.error }));
-                  }}
-                  className={actionErrors.name ? "border-destructive" : ""}
-                />
-                {actionErrors.name && (
-                  <p className="text-xs text-destructive">{actionErrors.name}</p>
-                )}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="editName">Action Name</Label>
-                <Input
-                  id="editName"
                   value={newActionName}
                   onChange={(e) => {
                     setNewActionName(e.target.value);

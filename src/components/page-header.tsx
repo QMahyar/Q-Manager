@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Button } from "@/components/ui/button";
 interface PageHeaderProps {
   title: string;
   description?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
   backTo?: string;
 }
 

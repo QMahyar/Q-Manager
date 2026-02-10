@@ -13,7 +13,6 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime,
 };
-
 use crate::db;
 
 /// Global tray icon reference for dynamic updates
@@ -61,7 +60,9 @@ pub fn setup_tray_wry(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::e
     let menu = build_tray_menu(app)?;
 
     // Load icon - use the app's path resolver to find the icon
-    let icon_path = app.path().resource_dir()?.join("icons").join("icon.png");
+    let icon_path = app
+        .path()
+        .resolve("icons/icon.png", tauri::path::BaseDirectory::Resource)?;
     log::info!("Loading tray icon from: {:?}", icon_path);
 
     // Read the icon file and create an Image
