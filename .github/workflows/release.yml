@@ -160,14 +160,14 @@ jobs:
       
       - name: Upload portable package (Windows)
         if: matrix.platform == 'windows-latest'
-        uses: actions/upload-release-asset@v1
+        run: |
+          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
+          $zipName = "Q-Manager-$version-portable-win-x64.zip"
+          
+          # Upload using gh CLI
+          gh release upload $env:GITHUB_REF_NAME $zipName --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./Q-Manager-${{ github.ref_name }}-portable-win-x64.zip
-          asset_name: Q-Manager-${{ github.ref_name }}-portable-win-x64.zip
-          asset_content_type: application/zip
       
       - name: Upload build artifacts (on failure)
         if: failure()
