@@ -30,9 +30,9 @@ jobs:
         run: |
           response=$(curl -s -w "\n%{http_code}" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${GITHUB_REF#refs/tags/}")
-          body=$(echo "$response" | head -n 1)
           status=$(echo "$response" | tail -n 1)
-          if [ "$status" = "200" ]; then
+          body=$(echo "$response" | sed '$d')
+          if [ "$status" = "200" ] && [ -n "$body" ] && echo "$body" | jq -e .id >/dev/null; then
             id=$(echo "$body" | jq -r .id)
             upload_url=$(echo "$body" | jq -r .upload_url)
             echo "id=$id" >> $GITHUB_OUTPUT
