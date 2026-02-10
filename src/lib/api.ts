@@ -139,8 +139,13 @@ export async function updatePhasePattern(payload: PhasePatternUpdate): Promise<P
   return invokeCommand(IPC_COMMANDS.phasePatternUpdate, { payload });
 }
 
-export async function updatePhasePriority(phaseId: number, priority: number): Promise<Phase> {
-  return invokeCommand(IPC_COMMANDS.phaseUpdatePriority, { phaseId, priority });
+export interface PhasePriorityUpdate {
+  phaseId: number;
+  priority: number;
+}
+
+export async function updatePhasePriority(payload: PhasePriorityUpdate): Promise<Phase> {
+  return invokeCommand(IPC_COMMANDS.phaseUpdatePriority, { ...payload });
 }
 
 export async function reloadAllPatterns(): Promise<void> {
