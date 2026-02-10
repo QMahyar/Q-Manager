@@ -138,6 +138,37 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.platform == 'ubuntu-latest' && '--verbose' || '' }}
       
+      - name: Create portable package (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
+          $portableDir = "Q-Manager-$version-portable-win-x64"
+          $zipName = "$portableDir.zip"
+          
+          # Create portable directory
+          New-Item -ItemType Directory -Force -Path $portableDir
+          
+          # Copy executable and dependencies
+          Copy-Item src-tauri/target/release/q-manager.exe $portableDir/
+          Copy-Item telethon-worker/dist/telethon-worker.exe $portableDir/
+          
+          # Create portable ZIP
+          Compress-Archive -Path $portableDir -DestinationPath $zipName -Force
+          
+          Write-Host "Created portable package: $zipName"
+          Get-Item $zipName | Select-Object Name, Length
+      
+      - name: Upload portable package (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./Q-Manager-${{ github.ref_name }}-portable-win-x64.zip
+          asset_name: Q-Manager-${{ github.ref_name }}-portable-win-x64.zip
+          asset_content_type: application/zip
+      
       - name: Upload build artifacts (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
