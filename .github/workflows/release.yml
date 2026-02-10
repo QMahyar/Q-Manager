@@ -133,17 +133,25 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       
-      - name: Configure bundle resources
+      - name: Configure bundle resources (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          $configPath = "src-tauri/tauri.conf.json"
+          $config = Get-Content $configPath | ConvertFrom-Json
+          $config.bundle.resources = @("../telethon-worker/dist/telethon-worker.exe")
+          $config | ConvertTo-Json -Depth 20 | Set-Content $configPath
+
+      - name: Configure bundle resources (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        shell: bash
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           config_path = Path('src-tauri/tauri.conf.json')
           config = json.loads(config_path.read_text())
-          if "windows" in "${{ matrix.platform }}":
-              config["bundle"]["resources"] = ["../telethon-worker/dist/telethon-worker.exe"]
-          else:
-              config["bundle"]["resources"] = ["../telethon-worker/dist/telethon-worker"]
+          config["bundle"]["resources"] = ["../telethon-worker/dist/telethon-worker"]
           config_path.write_text(json.dumps(config, indent=2))
           PY
 
