@@ -37,7 +37,7 @@ pub fn target_defaults_get(action_id: i64) -> CommandResult<Option<TargetDefault
         },
     )
     .map(Some)
-    .or_else(|_| Ok(None))
+    .or(Ok(None))
 }
 
 #[command]

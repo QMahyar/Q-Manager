@@ -432,22 +432,22 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
         let path = entry.path();
         let name = path
             .strip_prefix(base_path)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?
+            .map_err(|e| std::io::Error::other(e.to_string()))?
             .to_string_lossy()
             .to_string();
 
         if path.is_dir() {
             zip.add_directory(&name, options)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             add_dir_to_zip(zip, base_path, &path, options)?;
         } else {
             zip.start_file(&name, options)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
             let mut file = fs::File::open(&path)?;
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer)?;
             zip.write_all(&buffer)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
         }
     }
 
