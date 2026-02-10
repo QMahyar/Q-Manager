@@ -78,8 +78,8 @@ fn test_regex_pattern_compilation() {
 #[test]
 fn test_blacklist_filtering() {
     // Test blacklist functionality
-    let blacklist = vec!["Player1".to_string(), "Player2".to_string()];
-    let available_players = vec!["Player1", "Player2", "Player3", "Player4"];
+    let blacklist = ["Player1".to_string(), "Player2".to_string()];
+    let available_players = ["Player1", "Player2", "Player3", "Player4"];
 
     let filtered: Vec<&str> = available_players
         .iter()
@@ -114,7 +114,7 @@ fn test_exponential_backoff() {
     let max_delay = 60000_u64;
 
     for attempt in 0..5 {
-        let delay = (base * multiplier.powi(attempt as i32)) as u64;
+        let delay = (base * multiplier.powi(attempt)) as u64;
         let capped_delay = delay.min(max_delay);
         assert!(capped_delay <= max_delay);
     }
