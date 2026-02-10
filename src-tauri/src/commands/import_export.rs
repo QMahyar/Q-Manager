@@ -209,10 +209,12 @@ pub fn account_import(source_path: String, account_name: String) -> CommandResul
 /// Returns Ok(Some((user_id, telegram_name, phone))) if valid
 /// Returns Ok(None) if Telethon worker not available or session needs re-login
 /// Returns Err if validation definitively failed
+type SessionInfo = (i64, Option<String>, Option<String>);
+
 fn validate_imported_session(
-    session_dir: &PathBuf,
+    session_dir: &std::path::Path,
     _account_id: i64,
-) -> CommandResult<Option<(i64, Option<String>, Option<String>)>> {
+) -> CommandResult<Option<SessionInfo>> {
     if telethon::assert_worker_exists().is_err() {
         log::info!("Telethon worker not available, skipping session validation");
         return Ok(None);
@@ -291,7 +293,7 @@ fn validate_imported_session(
 }
 
 /// Recursively copy a directory
-fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
     }
@@ -423,8 +425,8 @@ pub fn account_export(
 /// Add a directory recursively to a ZIP archive
 fn add_dir_to_zip<W: Write + std::io::Seek>(
     zip: &mut ZipWriter<W>,
-    base_path: &PathBuf,
-    current_path: &PathBuf,
+    base_path: &std::path::Path,
+    current_path: &std::path::Path,
     options: SimpleFileOptions,
 ) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(current_path)? {
