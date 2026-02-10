@@ -119,9 +119,13 @@ jobs:
           chmod +x build-telethon.sh
           ./build-telethon.sh --output dist --clean
       
-      - name: Verify Telethon worker build
-        run: |
-          ls -lh telethon-worker/dist/ || dir telethon-worker\dist\
+      - name: Verify Telethon worker build (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: ls -lh telethon-worker/dist/
+      
+      - name: Verify Telethon worker build (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: dir telethon-worker\dist\
       
       - name: Install frontend dependencies
         run: npm ci
