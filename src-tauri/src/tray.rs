@@ -63,20 +63,18 @@ pub fn setup_tray_wry(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::e
     // Load icon - use the app's path resolver to find the icon
     let icon_path = app.path().resource_dir()?.join("icons").join("icon.png");
     log::info!("Loading tray icon from: {:?}", icon_path);
-    
+
     // Read the icon file and create an Image
-    let icon_bytes = std::fs::read(&icon_path)
-        .map_err(|e| {
-            log::error!("Failed to read tray icon from {:?}: {}", icon_path, e);
-            e
-        })?;
-    
-    let icon = image::load_from_memory(&icon_bytes)
-        .map_err(|e| {
-            log::error!("Failed to decode tray icon: {}", e);
-            e
-        })?;
-    
+    let icon_bytes = std::fs::read(&icon_path).map_err(|e| {
+        log::error!("Failed to read tray icon from {:?}: {}", icon_path, e);
+        e
+    })?;
+
+    let icon = image::load_from_memory(&icon_bytes).map_err(|e| {
+        log::error!("Failed to decode tray icon: {}", e);
+        e
+    })?;
+
     let (width, height) = icon.dimensions();
     let rgba = icon.to_rgba8().into_raw();
     let tauri_icon = tauri::image::Image::new_owned(rgba, width, height);
