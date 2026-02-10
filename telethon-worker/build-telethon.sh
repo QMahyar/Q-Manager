@@ -38,8 +38,8 @@ if [ "$CLEAN" = true ]; then
   rm -rf "$SCRIPT_DIR/build" "$SCRIPT_DIR/dist"
 fi
 
-python3 -m pip install --upgrade pip >/dev/null
-python3 -m pip install telethon pyinstaller >/dev/null
+python3 -m pip install --upgrade pip --break-system-packages >/dev/null 2>&1 || true
+python3 -m pip install telethon pyinstaller --break-system-packages >/dev/null 2>&1 || python3 -m pip install --user telethon pyinstaller >/dev/null
 
 DIST_DIR="$OUTPUT_DIR"
 if [ -z "$DIST_DIR" ]; then
