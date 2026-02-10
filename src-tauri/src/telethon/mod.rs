@@ -88,7 +88,7 @@ impl TelethonClient {
         let events_clone = Arc::clone(&events);
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 if let Ok(response) = serde_json::from_str::<TelethonResponse>(&line) {
                     let mut guard = responses_clone.lock().unwrap();
                     guard.insert(response.id.clone(), response);

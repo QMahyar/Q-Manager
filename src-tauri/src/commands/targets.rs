@@ -103,7 +103,7 @@ pub fn target_override_get(
         },
     )
     .map(Some)
-    .or_else(|_| Ok(None))
+    .or(Ok(None))
 }
 
 #[command]
@@ -289,7 +289,7 @@ pub fn delay_default_get(action_id: i64) -> CommandResult<Option<DelayDefault>> 
         },
     )
     .map(Some)
-    .or_else(|_| Ok(None))
+    .or(Ok(None))
 }
 
 #[command]
@@ -358,7 +358,7 @@ pub fn delay_override_get(account_id: i64, action_id: i64) -> CommandResult<Opti
         },
     )
     .map(Some)
-    .or_else(|_| Ok(None))
+    .or(Ok(None))
 }
 
 #[command]
