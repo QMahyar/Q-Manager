@@ -375,6 +375,16 @@ pub struct ActionPattern {
     pub step: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionPatternCreate {
+    pub action_id: i64,
+    pub pattern: String,
+    pub is_regex: bool,
+    pub enabled: bool,
+    pub priority: i32,
+    pub step: i32,
+}
+
 pub fn list_action_patterns(conn: &Connection, action_id: i64) -> Result<Vec<ActionPattern>> {
     let mut stmt = conn.prepare(
         "SELECT id, action_id, pattern, is_regex, enabled, priority, step
@@ -415,6 +425,80 @@ pub fn list_all_action_patterns(conn: &Connection) -> Result<Vec<ActionPattern>>
     })?;
 
     patterns.collect()
+}
+
+pub fn list_all_phase_patterns(conn: &Connection) -> Result<Vec<PhasePattern>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, phase_id, pattern, is_regex, enabled, priority
+         FROM phase_patterns ORDER BY priority DESC",
+    )?;
+
+    let patterns = stmt.query_map([], |row| {
+        Ok(PhasePattern {
+            id: row.get(0)?,
+            phase_id: row.get(1)?,
+            pattern: row.get(2)?,
+            is_regex: row.get::<_, i32>(3)? != 0,
+            enabled: row.get::<_, i32>(4)? != 0,
+            priority: row.get(5)?,
+        })
+    })?;
+
+    patterns.collect()
+}
+
+pub fn upsert_phase_pattern(conn: &Connection, data: &PhasePatternCreate) -> Result<bool> {
+    let updated = conn.execute(
+        "UPDATE phase_patterns SET enabled = ?1, priority = ?2
+         WHERE phase_id = ?3 AND pattern = ?4 AND is_regex = ?5",
+        params![
+            data.enabled as i32,
+            data.priority,
+            data.phase_id,
+            data.pattern,
+            data.is_regex as i32
+        ],
+    )?;
+
+    if updated == 0 {
+        create_phase_pattern(conn, data)?;
+        Ok(false)
+    } else {
+        Ok(true)
+    }
+}
+
+pub fn upsert_action_pattern(conn: &Connection, data: &ActionPatternCreate) -> Result<bool> {
+    let updated = conn.execute(
+        "UPDATE action_patterns SET enabled = ?1, priority = ?2
+         WHERE action_id = ?3 AND step = ?4 AND pattern = ?5 AND is_regex = ?6",
+        params![
+            data.enabled as i32,
+            data.priority,
+            data.action_id,
+            data.step,
+            data.pattern,
+            data.is_regex as i32
+        ],
+    )?;
+
+    if updated == 0 {
+        conn.execute(
+            "INSERT INTO action_patterns (action_id, pattern, is_regex, enabled, priority, step)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                data.action_id,
+                data.pattern,
+                data.is_regex as i32,
+                data.enabled as i32,
+                data.priority,
+                data.step,
+            ],
+        )?;
+        Ok(false)
+    } else {
+        Ok(true)
+    }
 }
 
 // ============================================================================

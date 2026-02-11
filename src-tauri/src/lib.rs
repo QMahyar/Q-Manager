@@ -145,6 +145,10 @@ pub fn run() {
             // Import/Export
             account_import_preflight,
             account_import_resolve,
+            phase_patterns_export,
+            phase_patterns_import,
+            action_patterns_export,
+            action_patterns_import,
             account_export,
             account_session_path,
             // Startup Checks

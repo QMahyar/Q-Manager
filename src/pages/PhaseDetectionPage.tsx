@@ -7,6 +7,8 @@ import {
   IconPencil,
   IconRefresh,
   IconFlask,
+  IconDownload,
+  IconUpload,
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   listPhases,
   listPhasePatterns,
@@ -39,6 +42,8 @@ import {
   updatePhasePattern,
   updatePhasePriority,
   reloadAllPatterns,
+  exportPhasePatterns,
+  importPhasePatterns,
 } from "@/lib/api";
 import type { PhasePattern } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
@@ -66,6 +71,8 @@ export default function PhaseDetectionPage() {
   const [editPhaseOpen, setEditPhaseOpen] = useState(false);
   const [phasePriority, setPhasePriority] = useState(0);
   const [isReloading, setIsReloading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   
   // AutoAnimate for pattern list
   const [patternsParent] = useAutoAnimate();
@@ -278,13 +285,71 @@ export default function PhaseDetectionPage() {
                   <h4 className="text-sm font-medium">
                     Patterns ({patterns.length})
                   </h4>
-                  <Button
-                    size="sm"
-                    onClick={() => setAddPatternOpen(true)}
-                  >
-                    <IconPlus className="size-4 mr-1" />
-                    Add Pattern
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        const path = await saveDialog({
+                          title: "Export phase patterns",
+                          defaultPath: "phase-patterns.json",
+                          filters: [{ name: "JSON", extensions: ["json"] }],
+                        });
+                        if (!path) return;
+                        setIsExporting(true);
+                        try {
+                          await exportPhasePatterns(path as string);
+                          toast.success("Phase patterns exported", {
+                            description: "JSON file saved successfully.",
+                          });
+                        } catch (e) {
+                          toast.error("Failed to export patterns", { description: getErrorMessage(e) });
+                        } finally {
+                          setIsExporting(false);
+                        }
+                      }}
+                      disabled={isExporting}
+                    >
+                      <IconDownload className="size-4 mr-1" />
+                      Export
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        const path = await openDialog({
+                          title: "Import phase patterns",
+                          multiple: false,
+                          filters: [{ name: "JSON", extensions: ["json"] }],
+                        });
+                        if (!path) return;
+                        setIsImporting(true);
+                        try {
+                          const result = await importPhasePatterns(path as string);
+                          toast.success("Phase patterns imported", {
+                            description: `Imported ${result.imported}, Updated ${result.updated}.`,
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["phase-patterns"] });
+                          await reloadAllPatterns();
+                        } catch (e) {
+                          toast.error("Failed to import patterns", { description: getErrorMessage(e) });
+                        } finally {
+                          setIsImporting(false);
+                        }
+                      }}
+                      disabled={isImporting}
+                    >
+                      <IconUpload className="size-4 mr-1" />
+                      Import
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setAddPatternOpen(true)}
+                    >
+                      <IconPlus className="size-4 mr-1" />
+                      Add Pattern
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Patterns Table */}

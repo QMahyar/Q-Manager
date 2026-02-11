@@ -5,6 +5,7 @@
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -13,8 +14,9 @@ use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 use crate::commands::{error_response, CommandResult};
-use crate::db;
+use crate::db::{self, ActionPatternCreate};
 use crate::telethon;
+use crate::validation::{validate_pattern, validate_priority};
 use crate::workers::WORKER_MANAGER;
 
 /// Get the sessions directory path
@@ -32,6 +34,8 @@ fn get_sessions_dir() -> PathBuf {
 fn get_account_session_dir(account_id: i64) -> PathBuf {
     get_sessions_dir().join(format!("account_{}", account_id))
 }
+
+const PATTERN_EXPORT_VERSION: i32 = 1;
 
 // ============================================================================
 // Import
@@ -74,6 +78,38 @@ pub struct ImportResolution {
     pub action: String,
     pub new_name: Option<String>,
     pub existing_account_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternExport {
+    pub version: i32,
+    pub phase_patterns: Vec<PatternPhaseRow>,
+    pub action_patterns: Vec<PatternActionRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternPhaseRow {
+    pub phase_id: i64,
+    pub pattern: String,
+    pub is_regex: bool,
+    pub enabled: bool,
+    pub priority: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternActionRow {
+    pub action_id: i64,
+    pub step: i32,
+    pub pattern: String,
+    pub is_regex: bool,
+    pub enabled: bool,
+    pub priority: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternImportResult {
+    pub imported: usize,
+    pub updated: usize,
 }
 
 /// Preflight import to detect duplicate account names.
@@ -621,6 +657,136 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
     }
 
     Ok(())
+}
+
+// ============================================================================
+// Pattern Export/Import
+// ============================================================================
+
+#[command]
+pub fn phase_patterns_export(path: String) -> CommandResult<PatternExport> {
+    let conn = db::get_conn().map_err(error_response)?;
+    let phase_patterns = db::list_all_phase_patterns(&conn).map_err(error_response)?;
+
+    let export = PatternExport {
+        version: PATTERN_EXPORT_VERSION,
+        phase_patterns: phase_patterns
+            .into_iter()
+            .map(|pattern| PatternPhaseRow {
+                phase_id: pattern.phase_id,
+                pattern: pattern.pattern,
+                is_regex: pattern.is_regex,
+                enabled: pattern.enabled,
+                priority: pattern.priority,
+            })
+            .collect(),
+        action_patterns: Vec::new(),
+    };
+
+    let json = serde_json::to_string_pretty(&export).map_err(error_response)?;
+    fs::write(&path, json).map_err(error_response)?;
+
+    Ok(export)
+}
+
+#[command]
+pub fn action_patterns_export(path: String) -> CommandResult<PatternExport> {
+    let conn = db::get_conn().map_err(error_response)?;
+    let action_patterns = db::list_all_action_patterns(&conn).map_err(error_response)?;
+
+    let export = PatternExport {
+        version: PATTERN_EXPORT_VERSION,
+        phase_patterns: Vec::new(),
+        action_patterns: action_patterns
+            .into_iter()
+            .map(|pattern| PatternActionRow {
+                action_id: pattern.action_id,
+                step: pattern.step,
+                pattern: pattern.pattern,
+                is_regex: pattern.is_regex,
+                enabled: pattern.enabled,
+                priority: pattern.priority,
+            })
+            .collect(),
+    };
+
+    let json = serde_json::to_string_pretty(&export).map_err(error_response)?;
+    fs::write(&path, json).map_err(error_response)?;
+
+    Ok(export)
+}
+
+#[command]
+pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult> {
+    let raw = fs::read_to_string(&path).map_err(error_response)?;
+    let payload: PatternExport = serde_json::from_str(&raw).map_err(error_response)?;
+
+    if payload.version != PATTERN_EXPORT_VERSION {
+        return Err(error_response("Unsupported pattern export version"));
+    }
+
+    let conn = db::get_conn().map_err(error_response)?;
+    let mut imported = 0usize;
+    let mut updated = 0usize;
+
+    for item in payload.phase_patterns {
+        validate_pattern(&item.pattern, item.is_regex).map_err(error_response)?;
+        validate_priority(item.priority).map_err(error_response)?;
+
+        let data = db::PhasePatternCreate {
+            phase_id: item.phase_id,
+            pattern: item.pattern,
+            is_regex: item.is_regex,
+            enabled: item.enabled,
+            priority: item.priority,
+        };
+
+        let was_updated = db::upsert_phase_pattern(&conn, &data).map_err(error_response)?;
+        if was_updated {
+            updated += 1;
+        } else {
+            imported += 1;
+        }
+    }
+
+    Ok(PatternImportResult { imported, updated })
+}
+
+#[command]
+pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult> {
+    let raw = fs::read_to_string(&path).map_err(error_response)?;
+    let payload: PatternExport = serde_json::from_str(&raw).map_err(error_response)?;
+
+    if payload.version != PATTERN_EXPORT_VERSION {
+        return Err(error_response("Unsupported pattern export version"));
+    }
+
+    let conn = db::get_conn().map_err(error_response)?;
+    let mut imported = 0usize;
+    let mut updated = 0usize;
+
+    for item in payload.action_patterns {
+        validate_pattern(&item.pattern, item.is_regex).map_err(error_response)?;
+        validate_priority(item.priority).map_err(error_response)?;
+
+        let data = ActionPatternCreate {
+            action_id: item.action_id,
+            pattern: item.pattern,
+            is_regex: item.is_regex,
+            enabled: item.enabled,
+            priority: item.priority,
+            step: item.step,
+        };
+
+        let was_updated = db::upsert_action_pattern(&conn, &data).map_err(error_response)?;
+        if was_updated {
+            updated += 1;
+        } else {
+            imported += 1;
+        }
+    }
+
+    Ok(PatternImportResult { imported, updated })
 }
 
 /// Get the path to an account's session directory (for file picker default)

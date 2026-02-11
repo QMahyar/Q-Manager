@@ -10,6 +10,8 @@ import {
   IconChevronRight,
   IconSettings,
   IconRefresh,
+  IconDownload,
+  IconUpload,
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -35,7 +37,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
-import { getTargetDefault, setTargetDefault, getDelayDefault, setDelayDefault, reloadAllPatterns, invokeCommand } from "@/lib/api";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { getTargetDefault, setTargetDefault, getDelayDefault, setDelayDefault, reloadAllPatterns, invokeCommand, exportActionPatterns, importActionPatterns } from "@/lib/api";
 import type { Action, ActionCreate, ActionUpdate, ActionPattern, ButtonType } from "@/lib/types";
 import { useActionsData } from "@/hooks/useActionsData";
 import { useActionPatterns, useActionPatternCounts } from "@/hooks/useActionPatterns";
@@ -96,6 +99,8 @@ export default function ActionsPage() {
   const [editPatternIsRegex, setEditPatternIsRegex] = useState(false);
   const [editPatternPriority, setEditPatternPriority] = useState(0);
   const [isReloading, setIsReloading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   
   // Validation errors
   const [actionErrors, setActionErrors] = useState<{ name?: string }>({});
@@ -441,6 +446,60 @@ export default function ActionsPage() {
         description="Define action triggers and button types"
       >
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const path = await saveDialog({
+                title: "Export action patterns",
+                defaultPath: "action-patterns.json",
+                filters: [{ name: "JSON", extensions: ["json"] }],
+              });
+              if (!path) return;
+              setIsExporting(true);
+              try {
+                await exportActionPatterns(path as string);
+                toast.success("Action patterns exported", {
+                  description: "JSON file saved successfully.",
+                });
+              } catch (e) {
+                toast.error("Failed to export patterns", { description: getErrorMessage(e) });
+              } finally {
+                setIsExporting(false);
+              }
+            }}
+            disabled={isExporting}
+          >
+            <IconDownload className="size-4 mr-2" />
+            Export
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const path = await openDialog({
+                title: "Import action patterns",
+                multiple: false,
+                filters: [{ name: "JSON", extensions: ["json"] }],
+              });
+              if (!path) return;
+              setIsImporting(true);
+              try {
+                const result = await importActionPatterns(path as string);
+                toast.success("Action patterns imported", {
+                  description: `Imported ${result.imported}, Updated ${result.updated}.`,
+                });
+                queryClient.invalidateQueries({ queryKey: ["action-patterns"] });
+                await reloadAllPatterns();
+              } catch (e) {
+                toast.error("Failed to import patterns", { description: getErrorMessage(e) });
+              } finally {
+                setIsImporting(false);
+              }
+            }}
+            disabled={isImporting}
+          >
+            <IconUpload className="size-4 mr-2" />
+            Import
+          </Button>
           <Button
             variant="outline"
             onClick={async () => {

@@ -303,12 +303,56 @@ export interface ExportResult {
 
 export type ExportFormat = "zip" | "folder";
 
+export interface PatternExport {
+  version: number;
+  phase_patterns: PatternPhaseRow[];
+  action_patterns: PatternActionRow[];
+}
+
+export interface PatternPhaseRow {
+  phase_id: number;
+  pattern: string;
+  is_regex: boolean;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface PatternActionRow {
+  action_id: number;
+  step: number;
+  pattern: string;
+  is_regex: boolean;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface PatternImportResult {
+  imported: number;
+  updated: number;
+}
+
 export async function importAccountPreflight(candidates: ImportCandidate[]): Promise<ImportPreflight> {
   return invokeCommand(IPC_COMMANDS.accountImportPreflight, { candidates });
 }
 
 export async function importAccountResolve(resolutions: ImportResolution[]): Promise<ImportResult[]> {
   return invokeCommand(IPC_COMMANDS.accountImportResolve, { resolutions });
+}
+
+export async function exportPhasePatterns(path: string): Promise<PatternExport> {
+  return invokeCommand(IPC_COMMANDS.phasePatternsExport, { path });
+}
+
+export async function importPhasePatterns(path: string): Promise<PatternImportResult> {
+  return invokeCommand(IPC_COMMANDS.phasePatternsImport, { path });
+}
+
+export async function exportActionPatterns(path: string): Promise<PatternExport> {
+  return invokeCommand(IPC_COMMANDS.actionPatternsExport, { path });
+}
+
+export async function importActionPatterns(path: string): Promise<PatternImportResult> {
+  return invokeCommand(IPC_COMMANDS.actionPatternsImport, { path });
 }
 
 export async function exportAccount(accountId: number, destPath: string, format: ExportFormat): Promise<ExportResult> {
