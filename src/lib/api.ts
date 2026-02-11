@@ -266,6 +266,35 @@ export interface ImportResult {
   message: string;
 }
 
+export interface ImportCandidate {
+  source_path: string;
+  account_name: string;
+}
+
+export interface ImportConflict {
+  source_path: string;
+  account_name: string;
+  existing_account_id: number;
+  existing_account_name: string;
+  existing_user_id: number | null;
+  existing_phone: string | null;
+  existing_last_seen_at: string | null;
+}
+
+export interface ImportPreflight {
+  conflicts: ImportConflict[];
+}
+
+export type ImportAction = "rename" | "replace" | "skip" | "cancel";
+
+export interface ImportResolution {
+  source_path: string;
+  account_name: string;
+  action: ImportAction;
+  new_name?: string | null;
+  existing_account_id?: number | null;
+}
+
 export interface ExportResult {
   success: boolean;
   path: string;
@@ -274,8 +303,12 @@ export interface ExportResult {
 
 export type ExportFormat = "zip" | "folder";
 
-export async function importAccount(sourcePath: string, accountName: string): Promise<ImportResult> {
-  return invokeCommand(IPC_COMMANDS.accountImport, { sourcePath, accountName });
+export async function importAccountPreflight(candidates: ImportCandidate[]): Promise<ImportPreflight> {
+  return invokeCommand(IPC_COMMANDS.accountImportPreflight, { candidates });
+}
+
+export async function importAccountResolve(resolutions: ImportResolution[]): Promise<ImportResult[]> {
+  return invokeCommand(IPC_COMMANDS.accountImportResolve, { resolutions });
 }
 
 export async function exportAccount(accountId: number, destPath: string, format: ExportFormat): Promise<ExportResult> {

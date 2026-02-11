@@ -143,7 +143,8 @@ pub fn run() {
             target_pair_remove,
             targets_copy,
             // Import/Export
-            account_import,
+            account_import_preflight,
+            account_import_resolve,
             account_export,
             account_session_path,
             // Startup Checks

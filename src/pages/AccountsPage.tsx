@@ -47,10 +47,15 @@ import {
 } from "@/components/ui/select";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
-  importAccount,
+  importAccountPreflight,
+  importAccountResolve,
   exportAccount,
   checkAccountStart,
   type ExportFormat,
+  type ImportConflict,
+  type ImportCandidate,
+  type ImportResolution,
+  type ImportAction,
 } from "@/lib/api";
 import { useAccountsData } from "@/hooks/useAccountsData";
 import type { Account, AccountStatus, StartupCheckResult, BulkStartReport } from "@/lib/types";
@@ -74,6 +79,13 @@ export default function AccountsPage() {
   const [importPath, setImportPath] = useState("");
   const [importName, setImportName] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importConflicts, setImportConflicts] = useState<ImportConflict[]>([]);
+  const [importConflictIndex, setImportConflictIndex] = useState(0);
+  const [importConflictDialogOpen, setImportConflictDialogOpen] = useState(false);
+  const [importResolutionName, setImportResolutionName] = useState("");
+  const [importApplyToAll, setImportApplyToAll] = useState(false);
+  const [importDefaultAction, setImportDefaultAction] = useState<ImportAction>("rename");
+  const [importResolutions, setImportResolutions] = useState<ImportResolution[]>([]);
   
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [accountToExport, setAccountToExport] = useState<Account | null>(null);
@@ -346,28 +358,52 @@ export default function AccountsPage() {
       if (!importName) {
         setImportName(folderName.replace(/_session$/, ""));
       }
+      resetImportState();
     }
   };
 
-  const handleImport = async () => {
-    if (!importPath || !importName) return;
-    
+  const buildDefaultRename = (name: string, index: number) => {
+    if (index <= 1) return `${name} (2)`;
+    return `${name} (${index + 1})`;
+  };
+
+  const resetImportState = () => {
+    setImportConflicts([]);
+    setImportConflictIndex(0);
+    setImportConflictDialogOpen(false);
+    setImportResolutionName("");
+    setImportApplyToAll(false);
+    setImportDefaultAction("rename");
+    setImportResolutions([]);
+  };
+
+  const resolveImport = async (resolutions: ImportResolution[]) => {
+    const results = await importAccountResolve(resolutions);
+    const successCount = results.filter((item) => item.success).length;
+    const failed = results.filter((item) => !item.success);
+
+    if (successCount > 0) {
+      toast.success("Import completed", {
+        description: `${successCount} account${successCount === 1 ? "" : "s"} imported successfully.`,
+      });
+      accountsQuery.refetch();
+    }
+
+    if (failed.length > 0) {
+      toast.error("Some imports failed", {
+        description: failed.map((item) => item.message).join("; "),
+      });
+    }
+  };
+
+  const startImportWithResolutions = async (resolutions: ImportResolution[]) => {
     setImporting(true);
     try {
-      const result = await importAccount(importPath, importName);
-      if (result.success) {
-        toast.success("Account imported", {
-          description: result.message,
-        });
-        accountsQuery.refetch();
-        setImportDialogOpen(false);
-        setImportPath("");
-        setImportName("");
-      } else {
-        toast.error("Import failed", {
-          description: result.message,
-        });
-      }
+      await resolveImport(resolutions);
+      setImportDialogOpen(false);
+      setImportPath("");
+      setImportName("");
+      resetImportState();
     } catch (error) {
       toast.error("Import failed", {
         description: getErrorMessage(error),
@@ -375,6 +411,94 @@ export default function AccountsPage() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleImport = async () => {
+    if (!importPath || !importName) return;
+
+    setImporting(true);
+    try {
+      const trimmedName = importName.trim();
+      const candidates: ImportCandidate[] = [
+        {
+          source_path: importPath,
+          account_name: trimmedName,
+        },
+      ];
+      const preflight = await importAccountPreflight(candidates);
+
+      if (preflight.conflicts.length === 0) {
+        await startImportWithResolutions([
+          {
+            source_path: importPath,
+            account_name: trimmedName,
+            action: "rename",
+          },
+        ]);
+        return;
+      }
+
+      setImportConflicts(preflight.conflicts);
+      setImportConflictIndex(0);
+      setImportConflictDialogOpen(true);
+      setImportResolutionName(buildDefaultRename(trimmedName, 1));
+      setImportResolutions([]);
+      setImportApplyToAll(false);
+    } catch (error) {
+      toast.error("Import failed", {
+        description: getErrorMessage(error),
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleResolveConflict = async (action: ImportAction) => {
+    const conflict = importConflicts[importConflictIndex];
+    if (!conflict) return;
+
+    const resolution: ImportResolution = {
+      source_path: conflict.source_path,
+      account_name: conflict.account_name,
+      action,
+      existing_account_id: conflict.existing_account_id,
+      new_name: action === "rename" ? importResolutionName.trim() : undefined,
+    };
+
+    const nextResolutions = [...importResolutions, resolution];
+    const nextIndex = importConflictIndex + 1;
+
+    if (importApplyToAll) {
+      const remaining = importConflicts.slice(nextIndex).map((item, idx) => {
+        const useAction = importDefaultAction;
+        const defaultName = buildDefaultRename(item.account_name, nextIndex + idx + 1);
+        return {
+          source_path: item.source_path,
+          account_name: item.account_name,
+          action: useAction,
+          existing_account_id: item.existing_account_id,
+          new_name: useAction === "rename" ? defaultName : undefined,
+        };
+      });
+      setImportConflictDialogOpen(false);
+      await startImportWithResolutions([...nextResolutions, ...remaining]);
+      return;
+    }
+
+    if (nextIndex >= importConflicts.length) {
+      setImportConflictDialogOpen(false);
+      await startImportWithResolutions(nextResolutions);
+      return;
+    }
+
+    setImportResolutions(nextResolutions);
+    setImportConflictIndex(nextIndex);
+    setImportResolutionName(buildDefaultRename(importConflicts[nextIndex].account_name, nextIndex + 1));
+  };
+
+  const handleCancelConflictFlow = () => {
+    setImportConflictDialogOpen(false);
+    resetImportState();
   };
 
   // Export handlers
@@ -495,7 +619,12 @@ export default function AccountsPage() {
         </Dialog>
 
         {/* Import Dialog */}
-        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <Dialog open={importDialogOpen} onOpenChange={(open) => {
+          setImportDialogOpen(open);
+          if (!open) {
+            resetImportState();
+          }
+        }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Import Session</DialogTitle>
@@ -532,10 +661,16 @@ export default function AccountsPage() {
                   onChange={(e) => setImportName(e.target.value)}
                   placeholder="Enter a name for this account"
                 />
+                <p className="text-xs text-muted-foreground">
+                  If the name already exists, you'll be asked to replace, rename, or cancel.
+                </p>
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              <Button variant="outline" onClick={() => {
+                setImportDialogOpen(false);
+                resetImportState();
+              }}>
                 Cancel
               </Button>
               <Button 
@@ -543,6 +678,105 @@ export default function AccountsPage() {
                 disabled={!importPath || !importName || importing}
               >
                 {importing ? "Importing..." : "Import"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Duplicate Conflict Dialog */}
+        <Dialog open={importConflictDialogOpen} onOpenChange={setImportConflictDialogOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Duplicate account name</DialogTitle>
+              <DialogDescription>
+                The account name already exists. Choose how to handle this session.
+              </DialogDescription>
+            </DialogHeader>
+            {importConflicts.length > 0 && (
+              <div className="space-y-4 py-2">
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium">Incoming</p>
+                    <Badge variant="secondary">{importConflicts[importConflictIndex]?.account_name}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground break-all">
+                    {importConflicts[importConflictIndex]?.source_path}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium">Existing</p>
+                    <Badge variant="outline">
+                      {importConflicts[importConflictIndex]?.existing_account_name}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <div>User ID: {importConflicts[importConflictIndex]?.existing_user_id ?? "-"}</div>
+                    <div>Phone: {importConflicts[importConflictIndex]?.existing_phone ?? "-"}</div>
+                    <div className="col-span-2">
+                      Last seen: {importConflicts[importConflictIndex]?.existing_last_seen_at
+                        ? new Date(importConflicts[importConflictIndex].existing_last_seen_at).toLocaleString()
+                        : "-"}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="import-rename">Rename to</Label>
+                  <Input
+                    id="import-rename"
+                    value={importResolutionName}
+                    onChange={(e) => setImportResolutionName(e.target.value)}
+                    placeholder="New account name"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Apply to all duplicates</p>
+                    <p className="text-xs text-muted-foreground">
+                      Use the same choice for remaining conflicts.
+                    </p>
+                  </div>
+                  <Checkbox
+                    checked={importApplyToAll}
+                    onCheckedChange={(value) => setImportApplyToAll(Boolean(value))}
+                  />
+                </div>
+                {importApplyToAll && (
+                  <div className="space-y-2">
+                    <Label htmlFor="import-default-action">Default action</Label>
+                    <Select
+                      value={importDefaultAction}
+                      onValueChange={(value) => setImportDefaultAction(value as ImportAction)}
+                    >
+                      <SelectTrigger id="import-default-action">
+                        <SelectValue placeholder="Choose default action" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="rename">Rename</SelectItem>
+                        <SelectItem value="replace">Replace</SelectItem>
+                        <SelectItem value="skip">Skip</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Conflict {importConflictIndex + 1} of {importConflicts.length}
+                </p>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCancelConflictFlow}>
+                Cancel
+              </Button>
+              <Button variant="outline" onClick={() => handleResolveConflict("skip")}>Skip</Button>
+              <Button variant="secondary" onClick={() => handleResolveConflict("replace")}>
+                Replace
+              </Button>
+              <Button
+                onClick={() => handleResolveConflict("rename")}
+                disabled={!importResolutionName.trim()}
+              >
+                Rename
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -15,6 +15,7 @@ use zip::ZipWriter;
 use crate::commands::{error_response, CommandResult};
 use crate::db;
 use crate::telethon;
+use crate::workers::WORKER_MANAGER;
 
 /// Get the sessions directory path
 fn get_sessions_dir() -> PathBuf {
@@ -44,16 +45,176 @@ pub struct ImportResult {
     pub message: String,
 }
 
-/// Import a Telethon session from a directory or ZIP file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportCandidate {
+    pub source_path: String,
+    pub account_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportConflict {
+    pub source_path: String,
+    pub account_name: String,
+    pub existing_account_id: i64,
+    pub existing_account_name: String,
+    pub existing_user_id: Option<i64>,
+    pub existing_phone: Option<String>,
+    pub existing_last_seen_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportPreflight {
+    pub conflicts: Vec<ImportConflict>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportResolution {
+    pub source_path: String,
+    pub account_name: String,
+    pub action: String,
+    pub new_name: Option<String>,
+    pub existing_account_id: Option<i64>,
+}
+
+/// Preflight import to detect duplicate account names.
 #[command]
-pub fn account_import(source_path: String, account_name: String) -> CommandResult<ImportResult> {
-    let source = PathBuf::from(&source_path);
+pub fn account_import_preflight(
+    candidates: Vec<ImportCandidate>,
+) -> CommandResult<ImportPreflight> {
+    let conn = db::get_conn().map_err(error_response)?;
+    let mut conflicts = Vec::new();
+
+    for candidate in candidates {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, account_name, user_id, phone, last_seen_at \
+                 FROM accounts WHERE account_name = ?1 COLLATE NOCASE",
+            )
+            .map_err(error_response)?;
+        let mut rows = stmt
+            .query(params![candidate.account_name.trim()])
+            .map_err(error_response)?;
+        if let Some(row) = rows.next().map_err(error_response)? {
+            conflicts.push(ImportConflict {
+                source_path: candidate.source_path,
+                account_name: candidate.account_name,
+                existing_account_id: row.get(0).map_err(error_response)?,
+                existing_account_name: row.get(1).map_err(error_response)?,
+                existing_user_id: row.get(2).map_err(error_response)?,
+                existing_phone: row.get(3).map_err(error_response)?,
+                existing_last_seen_at: row.get(4).map_err(error_response)?,
+            });
+        }
+    }
+
+    Ok(ImportPreflight { conflicts })
+}
+
+/// Import Telethon sessions from a directory or ZIP file with duplicate resolution.
+#[command]
+pub fn account_import_resolve(
+    resolutions: Vec<ImportResolution>,
+) -> CommandResult<Vec<ImportResult>> {
+    let mut results = Vec::new();
+
+    for resolution in resolutions {
+        let action = resolution.action.to_lowercase();
+        if action == "cancel" || action == "skip" {
+            results.push(ImportResult {
+                success: false,
+                account_id: None,
+                account_name: resolution.account_name,
+                message: if action == "cancel" {
+                    "Import canceled".to_string()
+                } else {
+                    "Import skipped".to_string()
+                },
+            });
+            if action == "cancel" {
+                break;
+            }
+            continue;
+        }
+
+        let chosen_name = if action == "rename" {
+            resolution
+                .new_name
+                .clone()
+                .unwrap_or_else(|| resolution.account_name.clone())
+        } else {
+            resolution.account_name.clone()
+        };
+
+        if action == "replace" {
+            if let Some(existing_id) = resolution.existing_account_id {
+                replace_existing_account(existing_id)?;
+            }
+        }
+
+        let result = import_single_account(&resolution.source_path, &chosen_name);
+        match result {
+            Ok(item) => results.push(item),
+            Err(err) => {
+                results.push(ImportResult {
+                    success: false,
+                    account_id: None,
+                    account_name: chosen_name,
+                    message: format!("Import failed: {:?}", err),
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+fn replace_existing_account(account_id: i64) -> CommandResult<()> {
+    // First stop the worker if running
+    let _ = tauri::async_runtime::block_on(WORKER_MANAGER.stop_account(account_id));
+
+    // Get the user_id before deleting the account (needed for session folder path)
+    let user_id: Option<i64> = {
+        let conn = db::get_conn().map_err(error_response)?;
+        conn.query_row(
+            "SELECT user_id FROM accounts WHERE id = ?1",
+            params![account_id],
+            |row| row.get(0),
+        )
+        .ok()
+    };
+
+    // Delete the account from database
+    {
+        let conn = db::get_conn().map_err(error_response)?;
+        db::delete_account(&conn, account_id).map_err(error_response)?;
+    }
+
+    // Delete the session folder if it exists
+    let sessions_dir = get_sessions_dir();
+
+    if let Some(uid) = user_id {
+        let session_dir = sessions_dir.join(format!("account_{}", uid));
+        if session_dir.exists() {
+            let _ = std::fs::remove_dir_all(&session_dir);
+        }
+    }
+
+    let session_dir_by_id = sessions_dir.join(format!("account_{}", account_id));
+    if session_dir_by_id.exists() {
+        let _ = std::fs::remove_dir_all(&session_dir_by_id);
+    }
+
+    Ok(())
+}
+
+fn import_single_account(source_path: &str, account_name: &str) -> CommandResult<ImportResult> {
+    let source = PathBuf::from(source_path);
 
     if !source.exists() {
         return Ok(ImportResult {
             success: false,
             account_id: None,
-            account_name,
+            account_name: account_name.to_string(),
             message: "Source path does not exist".to_string(),
         });
     }
@@ -62,7 +223,7 @@ pub fn account_import(source_path: String, account_name: String) -> CommandResul
     let conn = db::get_conn().map_err(error_response)?;
 
     conn.execute(
-        "INSERT INTO accounts (account_name, status, created_at, updated_at) 
+        "INSERT INTO accounts (account_name, status, created_at, updated_at) \
          VALUES (?1, 'stopped', datetime('now'), datetime('now'))",
         params![account_name],
     )
@@ -156,11 +317,13 @@ pub fn account_import(source_path: String, account_name: String) -> CommandResul
     conn.execute(
         "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 0, 0, 'main')",
         params![account_id],
-    ).map_err(error_response)?;
+    )
+    .map_err(error_response)?;
     conn.execute(
         "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 1, 0, 'main')",
         params![account_id],
-    ).map_err(error_response)?;
+    )
+    .map_err(error_response)?;
 
     // Release database lock before Telethon validation
     drop(conn);
@@ -174,19 +337,23 @@ pub fn account_import(source_path: String, account_name: String) -> CommandResul
             conn.execute(
                 "UPDATE accounts SET user_id = ?1, telegram_name = ?2, phone = ?3, updated_at = datetime('now') WHERE id = ?4",
                 params![user_id, telegram_name, phone, account_id],
-            ).map_err(error_response)?;
+            )
+            .map_err(error_response)?;
 
             Ok(ImportResult {
                 success: true,
                 account_id: Some(account_id),
-                account_name,
-                message: format!("Account imported and validated successfully (User: {})", telegram_name.unwrap_or_default()),
+                account_name: account_name.to_string(),
+                message: format!(
+                    "Account imported and validated successfully (User: {})",
+                    telegram_name.unwrap_or_default()
+                ),
             })
         }
         Ok(None) => Ok(ImportResult {
             success: true,
             account_id: Some(account_id),
-            account_name,
+            account_name: account_name.to_string(),
             message: "Account imported successfully. Session validation skipped (Telethon worker not available or session requires re-login).".to_string(),
         }),
         Err(e) => {
@@ -198,7 +365,7 @@ pub fn account_import(source_path: String, account_name: String) -> CommandResul
             Ok(ImportResult {
                 success: false,
                 account_id: None,
-                account_name,
+                account_name: account_name.to_string(),
                 message: format!("Import failed: Session validation error - {:?}", e),
             })
         }
