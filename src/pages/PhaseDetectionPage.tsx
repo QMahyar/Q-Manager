@@ -286,6 +286,7 @@ export default function PhaseDetectionPage() {
                     Patterns ({patterns.length})
                   </h4>
                   <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Exports all phases</span>
                     <Button
                       size="sm"
                       variant="outline"
@@ -327,9 +328,14 @@ export default function PhaseDetectionPage() {
                         try {
                           const result = await importPhasePatterns(path as string);
                           toast.success("Phase patterns imported", {
-                            description: `Imported ${result.imported}, Updated ${result.updated}.`,
+                            description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.`,
                           });
-                          queryClient.invalidateQueries({ queryKey: ["phase-patterns"] });
+                          if (result.skipped_items?.length) {
+                            toast.warning("Some patterns were skipped", {
+                              description: result.skipped_items.join("; "),
+                            });
+                          }
+                          queryClient.invalidateQueries({ queryKey: ["phase-patterns"], exact: false });
                           await reloadAllPatterns();
                         } catch (e) {
                           toast.error("Failed to import patterns", { description: getErrorMessage(e) });

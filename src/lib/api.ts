@@ -310,7 +310,8 @@ export interface PatternExport {
 }
 
 export interface PatternPhaseRow {
-  phase_id: number;
+  phase_id?: number | null;
+  phase_name?: string | null;
   pattern: string;
   is_regex: boolean;
   enabled: boolean;
@@ -318,7 +319,8 @@ export interface PatternPhaseRow {
 }
 
 export interface PatternActionRow {
-  action_id: number;
+  action_id?: number | null;
+  action_name?: string | null;
   step: number;
   pattern: string;
   is_regex: boolean;
@@ -329,6 +331,8 @@ export interface PatternActionRow {
 export interface PatternImportResult {
   imported: number;
   updated: number;
+  skipped: number;
+  skipped_items: string[];
 }
 
 export async function importAccountPreflight(candidates: ImportCandidate[]): Promise<ImportPreflight> {

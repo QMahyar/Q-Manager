@@ -446,6 +446,7 @@ export default function ActionsPage() {
         description="Define action triggers and button types"
       >
         <div className="flex gap-2">
+          <span className="text-xs text-muted-foreground self-center">Exports all actions</span>
           <Button
             variant="outline"
             onClick={async () => {
@@ -485,8 +486,13 @@ export default function ActionsPage() {
               try {
                 const result = await importActionPatterns(path as string);
                 toast.success("Action patterns imported", {
-                  description: `Imported ${result.imported}, Updated ${result.updated}.`,
+                  description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.`,
                 });
+                if (result.skipped_items?.length) {
+                  toast.warning("Some patterns were skipped", {
+                    description: result.skipped_items.join("; "),
+                  });
+                }
                 queryClient.invalidateQueries({ queryKey: ["action-patterns"] });
                 await reloadAllPatterns();
               } catch (e) {

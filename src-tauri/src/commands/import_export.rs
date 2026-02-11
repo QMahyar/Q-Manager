@@ -89,7 +89,8 @@ pub struct PatternExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternPhaseRow {
-    pub phase_id: i64,
+    pub phase_id: Option<i64>,
+    pub phase_name: Option<String>,
     pub pattern: String,
     pub is_regex: bool,
     pub enabled: bool,
@@ -98,7 +99,8 @@ pub struct PatternPhaseRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternActionRow {
-    pub action_id: i64,
+    pub action_id: Option<i64>,
+    pub action_name: Option<String>,
     pub step: i32,
     pub pattern: String,
     pub is_regex: bool,
@@ -110,6 +112,8 @@ pub struct PatternActionRow {
 pub struct PatternImportResult {
     pub imported: usize,
     pub updated: usize,
+    pub skipped: usize,
+    pub skipped_items: Vec<String>,
 }
 
 /// Preflight import to detect duplicate account names.
@@ -663,17 +667,69 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
 // Pattern Export/Import
 // ============================================================================
 
+fn phase_id_by_name(conn: &rusqlite::Connection, name: &str) -> CommandResult<Option<i64>> {
+    let mut stmt = conn
+        .prepare("SELECT id FROM phases WHERE name = ?1")
+        .map_err(error_response)?;
+    let mut rows = stmt.query(params![name]).map_err(error_response)?;
+    if let Some(row) = rows.next().map_err(error_response)? {
+        Ok(Some(row.get(0).map_err(error_response)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn phase_exists(conn: &rusqlite::Connection, phase_id: i64) -> CommandResult<bool> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM phases WHERE id = ?1",
+            params![phase_id],
+            |row| row.get(0),
+        )
+        .map_err(error_response)?;
+    Ok(exists > 0)
+}
+
+fn action_id_by_name(conn: &rusqlite::Connection, name: &str) -> CommandResult<Option<i64>> {
+    let mut stmt = conn
+        .prepare("SELECT id FROM actions WHERE name = ?1")
+        .map_err(error_response)?;
+    let mut rows = stmt.query(params![name]).map_err(error_response)?;
+    if let Some(row) = rows.next().map_err(error_response)? {
+        Ok(Some(row.get(0).map_err(error_response)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn action_exists(conn: &rusqlite::Connection, action_id: i64) -> CommandResult<bool> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM actions WHERE id = ?1",
+            params![action_id],
+            |row| row.get(0),
+        )
+        .map_err(error_response)?;
+    Ok(exists > 0)
+}
+
 #[command]
 pub fn phase_patterns_export(path: String) -> CommandResult<PatternExport> {
     let conn = db::get_conn().map_err(error_response)?;
     let phase_patterns = db::list_all_phase_patterns(&conn).map_err(error_response)?;
+    let phases = db::list_phases(&conn).map_err(error_response)?;
+    let phase_names: std::collections::HashMap<i64, String> = phases
+        .into_iter()
+        .map(|phase| (phase.id, phase.name))
+        .collect();
 
     let export = PatternExport {
         version: PATTERN_EXPORT_VERSION,
         phase_patterns: phase_patterns
             .into_iter()
             .map(|pattern| PatternPhaseRow {
-                phase_id: pattern.phase_id,
+                phase_id: Some(pattern.phase_id),
+                phase_name: phase_names.get(&pattern.phase_id).cloned(),
                 pattern: pattern.pattern,
                 is_regex: pattern.is_regex,
                 enabled: pattern.enabled,
@@ -693,6 +749,11 @@ pub fn phase_patterns_export(path: String) -> CommandResult<PatternExport> {
 pub fn action_patterns_export(path: String) -> CommandResult<PatternExport> {
     let conn = db::get_conn().map_err(error_response)?;
     let action_patterns = db::list_all_action_patterns(&conn).map_err(error_response)?;
+    let actions = db::list_actions(&conn).map_err(error_response)?;
+    let action_names: std::collections::HashMap<i64, String> = actions
+        .into_iter()
+        .map(|action| (action.id, action.name))
+        .collect();
 
     let export = PatternExport {
         version: PATTERN_EXPORT_VERSION,
@@ -700,7 +761,8 @@ pub fn action_patterns_export(path: String) -> CommandResult<PatternExport> {
         action_patterns: action_patterns
             .into_iter()
             .map(|pattern| PatternActionRow {
-                action_id: pattern.action_id,
+                action_id: Some(pattern.action_id),
+                action_name: action_names.get(&pattern.action_id).cloned(),
                 step: pattern.step,
                 pattern: pattern.pattern,
                 is_regex: pattern.is_regex,
@@ -728,13 +790,33 @@ pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult>
     let conn = db::get_conn().map_err(error_response)?;
     let mut imported = 0usize;
     let mut updated = 0usize;
+    let mut skipped = 0usize;
+    let mut skipped_items = Vec::new();
 
     for item in payload.phase_patterns {
         validate_pattern(&item.pattern, item.is_regex).map_err(error_response)?;
         validate_priority(item.priority).map_err(error_response)?;
 
+        let phase_id = if let Some(phase_id) = item.phase_id {
+            if phase_exists(&conn, phase_id)? {
+                Some(phase_id)
+            } else {
+                None
+            }
+        } else if let Some(name) = item.phase_name.as_deref() {
+            phase_id_by_name(&conn, name)?
+        } else {
+            None
+        };
+
+        let Some(phase_id) = phase_id else {
+            skipped += 1;
+            skipped_items.push(format!("Phase pattern skipped (missing phase): {}", item.pattern));
+            continue;
+        };
+
         let data = db::PhasePatternCreate {
-            phase_id: item.phase_id,
+            phase_id,
             pattern: item.pattern,
             is_regex: item.is_regex,
             enabled: item.enabled,
@@ -749,7 +831,12 @@ pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult>
         }
     }
 
-    Ok(PatternImportResult { imported, updated })
+    Ok(PatternImportResult {
+        imported,
+        updated,
+        skipped,
+        skipped_items,
+    })
 }
 
 #[command]
@@ -764,13 +851,33 @@ pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult
     let conn = db::get_conn().map_err(error_response)?;
     let mut imported = 0usize;
     let mut updated = 0usize;
+    let mut skipped = 0usize;
+    let mut skipped_items = Vec::new();
 
     for item in payload.action_patterns {
         validate_pattern(&item.pattern, item.is_regex).map_err(error_response)?;
         validate_priority(item.priority).map_err(error_response)?;
 
+        let action_id = if let Some(action_id) = item.action_id {
+            if action_exists(&conn, action_id)? {
+                Some(action_id)
+            } else {
+                None
+            }
+        } else if let Some(name) = item.action_name.as_deref() {
+            action_id_by_name(&conn, name)?
+        } else {
+            None
+        };
+
+        let Some(action_id) = action_id else {
+            skipped += 1;
+            skipped_items.push(format!("Action pattern skipped (missing action): {}", item.pattern));
+            continue;
+        };
+
         let data = ActionPatternCreate {
-            action_id: item.action_id,
+            action_id,
             pattern: item.pattern,
             is_regex: item.is_regex,
             enabled: item.enabled,
@@ -786,7 +893,12 @@ pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult
         }
     }
 
-    Ok(PatternImportResult { imported, updated })
+    Ok(PatternImportResult {
+        imported,
+        updated,
+        skipped,
+        skipped_items,
+    })
 }
 
 /// Get the path to an account's session directory (for file picker default)
