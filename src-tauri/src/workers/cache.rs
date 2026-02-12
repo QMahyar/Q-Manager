@@ -65,6 +65,10 @@ pub struct WorkerCache {
     actions: Mutex<Option<CachedItem<Vec<Action>>>>,
     action_patterns: Mutex<Option<CachedItem<Vec<ActionPattern>>>>,
 
+    // Pattern cache versions (for scoped reloads)
+    phase_version: Mutex<Option<i64>>,
+    action_version: Mutex<Option<i64>>,
+
     // Per-account action config cache
     action_configs: Mutex<HashMap<(i64, i64), CachedItem<ActionConfig>>>,
 
@@ -80,25 +84,31 @@ impl WorkerCache {
             phase_patterns: Mutex::new(None),
             actions: Mutex::new(None),
             action_patterns: Mutex::new(None),
+            phase_version: Mutex::new(None),
+            action_version: Mutex::new(None),
             action_configs: Mutex::new(HashMap::new()),
             hits: std::sync::atomic::AtomicU64::new(0),
             misses: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
-    /// Get cached phase patterns or load from DB
-    pub fn get_phase_patterns<F>(&self, loader: F) -> Result<Vec<PhasePatternWithInfo>, String>
+    /// Get cached phase patterns or load from DB (version-aware)
+    pub fn get_phase_patterns<F>(
+        &self,
+        version: i64,
+        loader: F,
+    ) -> Result<Vec<PhasePatternWithInfo>, String>
     where
         F: FnOnce() -> Result<Vec<PhasePatternWithInfo>, String>,
     {
-        if let Some(data) = self.get_cached(&self.phase_patterns)? {
+        if let Some(data) = self.get_cached_with_version(&self.phase_patterns, &self.phase_version, version)? {
             return Ok(data);
         }
 
         self.misses
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
-        self.set_cached(&self.phase_patterns, data.clone())?;
+        self.set_cached_with_version(&self.phase_patterns, &self.phase_version, version, data.clone())?;
         Ok(data)
     }
 
@@ -126,35 +136,62 @@ impl WorkerCache {
         Ok(())
     }
 
-    /// Get cached actions or load from DB
-    pub fn get_actions<F>(&self, loader: F) -> Result<Vec<Action>, String>
+    fn get_cached_with_version<T: Clone>(
+        &self,
+        cache: &Mutex<Option<CachedItem<Vec<T>>>>,
+        version_cache: &Mutex<Option<i64>>,
+        version: i64,
+    ) -> Result<Option<Vec<T>>, String> {
+        let version_guard = version_cache.lock().map_err(|e| e.to_string())?;
+        if version_guard.map(|v| v == version).unwrap_or(false) {
+            return self.get_cached(cache);
+        }
+        Ok(None)
+    }
+
+    fn set_cached_with_version<T: Clone>(
+        &self,
+        cache: &Mutex<Option<CachedItem<Vec<T>>>>,
+        version_cache: &Mutex<Option<i64>>,
+        version: i64,
+        data: Vec<T>,
+    ) -> Result<(), String> {
+        {
+            let mut version_guard = version_cache.lock().map_err(|e| e.to_string())?;
+            *version_guard = Some(version);
+        }
+        self.set_cached(cache, data)
+    }
+
+    /// Get cached actions or load from DB (version-aware)
+    pub fn get_actions<F>(&self, version: i64, loader: F) -> Result<Vec<Action>, String>
     where
         F: FnOnce() -> Result<Vec<Action>, String>,
     {
-        if let Some(data) = self.get_cached(&self.actions)? {
+        if let Some(data) = self.get_cached_with_version(&self.actions, &self.action_version, version)? {
             return Ok(data);
         }
 
         self.misses
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
-        self.set_cached(&self.actions, data.clone())?;
+        self.set_cached_with_version(&self.actions, &self.action_version, version, data.clone())?;
         Ok(data)
     }
 
-    /// Get cached action patterns or load from DB
-    pub fn get_action_patterns<F>(&self, loader: F) -> Result<Vec<ActionPattern>, String>
+    /// Get cached action patterns or load from DB (version-aware)
+    pub fn get_action_patterns<F>(&self, version: i64, loader: F) -> Result<Vec<ActionPattern>, String>
     where
         F: FnOnce() -> Result<Vec<ActionPattern>, String>,
     {
-        if let Some(data) = self.get_cached(&self.action_patterns)? {
+        if let Some(data) = self.get_cached_with_version(&self.action_patterns, &self.action_version, version)? {
             return Ok(data);
         }
 
         self.misses
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
-        self.set_cached(&self.action_patterns, data.clone())?;
+        self.set_cached_with_version(&self.action_patterns, &self.action_version, version, data.clone())?;
         Ok(data)
     }
 
@@ -167,6 +204,12 @@ impl WorkerCache {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_patterns.lock() {
+            *cache = None;
+        }
+        if let Ok(mut cache) = self.phase_version.lock() {
+            *cache = None;
+        }
+        if let Ok(mut cache) = self.action_version.lock() {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_configs.lock() {
@@ -184,6 +227,12 @@ impl WorkerCache {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_patterns.lock() {
+            *cache = None;
+        }
+        if let Ok(mut cache) = self.phase_version.lock() {
+            *cache = None;
+        }
+        if let Ok(mut cache) = self.action_version.lock() {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_configs.lock() {

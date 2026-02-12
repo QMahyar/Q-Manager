@@ -57,6 +57,7 @@ pub struct TelethonClient {
     child: Arc<Mutex<Child>>,
     stdin: Arc<Mutex<ChildStdin>>,
     responses: Arc<Mutex<HashMap<String, TelethonResponse>>>,
+    pending: Arc<Mutex<HashMap<String, std::sync::mpsc::Sender<TelethonResponse>>>>,
     events: Arc<Mutex<Vec<TelethonEvent>>>,
 }
 
@@ -83,15 +84,22 @@ impl TelethonClient {
 
         let responses: Arc<Mutex<HashMap<String, TelethonResponse>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let pending: Arc<Mutex<HashMap<String, std::sync::mpsc::Sender<TelethonResponse>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let events: Arc<Mutex<Vec<TelethonEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let responses_clone = Arc::clone(&responses);
+        let pending_clone = Arc::clone(&pending);
         let events_clone = Arc::clone(&events);
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
                 if let Ok(response) = serde_json::from_str::<TelethonResponse>(&line) {
-                    let mut guard = responses_clone.lock().unwrap();
-                    guard.insert(response.id.clone(), response);
+                    if let Some(sender) = pending_clone.lock().unwrap().remove(&response.id) {
+                        let _ = sender.send(response);
+                    } else {
+                        let mut guard = responses_clone.lock().unwrap();
+                        guard.insert(response.id.clone(), response);
+                    }
                 } else if let Ok(event_wrapper) = serde_json::from_str::<serde_json::Value>(&line) {
                     if let Some(event_value) = event_wrapper.get("event") {
                         if let Ok(event) =
@@ -109,6 +117,7 @@ impl TelethonClient {
             child: Arc::new(Mutex::new(child)),
             stdin: Arc::new(Mutex::new(stdin)),
             responses,
+            pending,
             events,
         })
     }
@@ -121,6 +130,11 @@ impl TelethonClient {
             payload,
         };
         let payload = serde_json::to_string(&request).map_err(|e| e.to_string())?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        {
+            let mut pending = self.pending.lock().unwrap();
+            pending.insert(request_id.clone(), tx);
+        }
         {
             let mut stdin = self.stdin.lock().unwrap();
             stdin
@@ -130,16 +144,15 @@ impl TelethonClient {
             stdin.flush().map_err(|e| e.to_string())?;
         }
 
-        let poll_interval_ms = 25u64;
-        let max_iters = TELETHON_REQUEST_TIMEOUT_MS / poll_interval_ms;
-        for _ in 0..max_iters {
-            std::thread::sleep(Duration::from_millis(poll_interval_ms));
-            if let Some(response) = self.responses.lock().unwrap().remove(&request_id) {
-                return Ok(response);
+        match rx.recv_timeout(Duration::from_millis(TELETHON_REQUEST_TIMEOUT_MS)) {
+            Ok(response) => Ok(response),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                let mut pending = self.pending.lock().unwrap();
+                pending.remove(&request_id);
+                Err("Telethon worker timeout".to_string())
             }
+            Err(_) => Err("Telethon worker channel closed".to_string()),
         }
-
-        Err("Telethon worker timeout".to_string())
     }
 
     pub fn poll_events(&self) -> Vec<TelethonEvent> {

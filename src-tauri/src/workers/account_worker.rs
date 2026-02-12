@@ -18,6 +18,7 @@ use crate::constants::{
 use crate::db::{Account, Settings};
 use crate::events::{
     emit_account_status, emit_action_detected, emit_join_attempt, emit_log, emit_phase_detected,
+    emit_regex_validation,
 };
 use crate::telethon::{TelethonButton, TelethonClient, TelethonEvent, TelethonMessage};
 use crate::workers::cache::{shared_cache, ActionConfig, WorkerCache};
@@ -307,17 +308,19 @@ impl AccountWorker {
         // Load all data in a single lock scope to minimize lock time
         let (phase_patterns, actions, action_patterns, settings) = {
             let conn = crate::db::get_conn().map_err(|e| e.to_string())?;
+            let versions = crate::db::get_pattern_versions(&conn)
+                .map_err(|e| format!("Failed to load pattern versions: {}", e))?;
 
-            let phase_patterns = self.cache.get_phase_patterns(|| {
+            let phase_patterns = self.cache.get_phase_patterns(versions.phase_version, || {
                 crate::db::list_all_phase_patterns_with_info(&conn)
                     .map_err(|e| format!("Failed to load phase patterns: {}", e))
             })?;
 
-            let actions = self.cache.get_actions(|| {
+            let actions = self.cache.get_actions(versions.action_version, || {
                 crate::db::list_actions(&conn).map_err(|e| format!("Failed to load actions: {}", e))
             })?;
 
-            let action_patterns = self.cache.get_action_patterns(|| {
+            let action_patterns = self.cache.get_action_patterns(versions.action_version, || {
                 crate::db::list_all_action_patterns(&conn)
                     .map_err(|e| format!("Failed to load action patterns: {}", e))
             })?;
@@ -337,6 +340,7 @@ impl AccountWorker {
             .map(|p| (p.pattern, p.phase_name, p.phase_priority))
             .collect();
 
+        self.emit_invalid_regexes("phase", phase_data.iter().map(|(p, _, _)| p));
         self.detection_pipeline.load_phase_patterns(phase_data);
         log::info!(
             "[{}] Loaded {} phase patterns",
@@ -345,6 +349,7 @@ impl AccountWorker {
         );
 
         // Load action patterns
+        self.emit_invalid_action_regexes("action", action_patterns.iter());
         self.detection_pipeline
             .load_action_patterns(actions.clone(), action_patterns);
         log::info!(
@@ -374,6 +379,32 @@ impl AccountWorker {
         );
 
         Ok(())
+    }
+
+    fn emit_invalid_regexes<'a, T>(&self, scope: &str, patterns: T)
+    where
+        T: IntoIterator<Item = &'a crate::db::PhasePattern>,
+    {
+        for pattern in patterns {
+            if pattern.is_regex {
+                if let Err(err) = Regex::new(&pattern.pattern) {
+                    emit_regex_validation(scope, &pattern.pattern, &err.to_string());
+                }
+            }
+        }
+    }
+
+    fn emit_invalid_action_regexes<'a, T>(&self, scope: &str, patterns: T)
+    where
+        T: IntoIterator<Item = &'a crate::db::ActionPattern>,
+    {
+        for pattern in patterns {
+            if pattern.is_regex {
+                if let Err(err) = Regex::new(&pattern.pattern) {
+                    emit_regex_validation(scope, &pattern.pattern, &err.to_string());
+                }
+            }
+        }
     }
 
     /// Parse ban warning patterns JSON into compiled patterns

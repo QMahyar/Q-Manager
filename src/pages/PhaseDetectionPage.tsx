@@ -23,16 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { PhasePatternDialogs } from "@/components/phases/PhasePatternDialogs";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   listPhases,
@@ -48,8 +39,8 @@ import {
 import type { PhasePattern } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
 import { RegexTestDialog, RegexValidationBadge } from "@/components/RegexTestDialog";
+import { useAccountEvents, RegexValidationEvent } from "@/hooks/useAccountEvents";
 import { HelpTooltip, helpContent } from "@/components/HelpTooltip";
-import { RegexHelpDialog } from "@/components/RegexHelpDialog";
 import { getErrorMessage } from "@/lib/error-utils";
 
 export default function PhaseDetectionPage() {
@@ -59,7 +50,6 @@ export default function PhaseDetectionPage() {
   const [newPattern, setNewPattern] = useState("");
   const [isRegex, setIsRegex] = useState(false);
   const [priority, setPriority] = useState(0);
-  const [deletePatternOpen, setDeletePatternOpen] = useState(false);
   const [patternToDelete, setPatternToDelete] = useState<PhasePattern | null>(null);
   
   // Edit pattern state
@@ -76,6 +66,16 @@ export default function PhaseDetectionPage() {
   
   // AutoAnimate for pattern list
   const [patternsParent] = useAutoAnimate();
+  const [regexIssues, setRegexIssues] = useState<RegexValidationEvent[]>([]);
+
+  useAccountEvents({
+    onRegexValidation: (event) => {
+      setRegexIssues((prev) => {
+        const next = [event, ...prev];
+        return next.slice(0, 10);
+      });
+    },
+  });
 
   // Fetch phases
   const { data: phases = [] } = useQuery({
@@ -233,6 +233,23 @@ export default function PhaseDetectionPage() {
         title="Phase Detection"
         description="Configure patterns to detect game phases"
       >
+        {regexIssues.length > 0 && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="font-medium">Invalid regex patterns detected</div>
+            <ul className="mt-2 list-disc pl-5 space-y-1">
+              {regexIssues.map((issue, index) => (
+                <li key={`${issue.scope}-${issue.pattern}-${index}`}>
+                  {issue.scope}: {issue.pattern} — {issue.error}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2">
+              <Button variant="outline" size="sm" onClick={() => setRegexIssues([])}>
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
         <Button
           variant="outline"
           onClick={handleReloadPatterns}
@@ -390,9 +407,12 @@ export default function PhaseDetectionPage() {
                                 {pattern.pattern}
                               </TableCell>
                               <TableCell>
-                                <Badge variant={pattern.is_regex ? "default" : "secondary"}>
-                                  {pattern.is_regex ? "Regex" : "Text"}
-                                </Badge>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={pattern.is_regex ? "default" : "secondary"}>
+                                    {pattern.is_regex ? "Regex" : "Text"}
+                                  </Badge>
+                                  <RegexValidationBadge pattern={pattern.pattern} isRegex={pattern.is_regex} />
+                                </div>
                               </TableCell>
                               <TableCell>{pattern.priority}</TableCell>
                               <TableCell>
@@ -428,7 +448,6 @@ export default function PhaseDetectionPage() {
                                     aria-label="Delete pattern"
                                     onClick={() => {
                                       setPatternToDelete(pattern);
-                                      setDeletePatternOpen(true);
                                     }}
                                   >
                                     <IconTrash className="size-4" />
@@ -446,105 +465,30 @@ export default function PhaseDetectionPage() {
           ))}
         </Tabs>
 
-        {/* Add Pattern Dialog */}
-        <Dialog open={addPatternOpen} onOpenChange={setAddPatternOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Pattern</DialogTitle>
-              <DialogDescription>
-                Add a new detection pattern for this phase.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="pattern">Pattern</Label>
-                  <RegexValidationBadge pattern={newPattern} isRegex={isRegex} />
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    id="pattern"
-                    value={newPattern}
-                    onChange={(e) => setNewPattern(e.target.value)}
-                    placeholder="Enter pattern text or regex..."
-                    className="font-mono flex-1"
-                  />
-                  <RegexTestDialog
-                    pattern={newPattern}
-                    isRegex={isRegex}
-                    onPatternChange={setNewPattern}
-                    onIsRegexChange={setIsRegex}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1">
-                    <Label>Use Regex</Label>
-                    <HelpTooltip content={helpContent.regex} />
-                    <RegexHelpDialog trigger={<Button variant="ghost" size="icon-sm" aria-label="Regex help">?</Button>} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Enable regular expression matching
-                  </p>
-                </div>
-                <Switch checked={isRegex} onCheckedChange={setIsRegex} />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center gap-1">
-                  <Label htmlFor="priority">Priority</Label>
-                  <HelpTooltip content={helpContent.phasePriority} />
-                </div>
-                <Input
-                  id="priority"
-                  type="number"
-                  value={priority}
-                  onChange={(e) => setPriority(Number(e.target.value))}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Lower numbers = higher priority
-                </p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAddPatternOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleAddPattern} 
-                disabled={!newPattern.trim() || (isRegex && (() => { try { new RegExp(newPattern); return false; } catch { return true; } })())}
-              >
-                Add Pattern
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Delete Pattern Dialog */}
-        <Dialog open={deletePatternOpen} onOpenChange={setDeletePatternOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete Pattern</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete this pattern? This action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <code className="block bg-muted p-2 rounded text-sm">
-                {patternToDelete?.pattern}
-              </code>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDeletePatternOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleDeletePattern} disabled={deletePatternMutation.isPending}>
-                Delete
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <PhasePatternDialogs
+          addPatternOpen={addPatternOpen}
+          editPatternOpen={editPatternOpen}
+          patternToDelete={patternToDelete}
+          patternToEdit={patternToEdit}
+          newPattern={newPattern}
+          isRegex={isRegex}
+          priority={priority}
+          editPattern={editPattern}
+          editIsRegex={editIsRegex}
+          editPriority={editPriority}
+          onAddPatternChange={setAddPatternOpen}
+          onEditPatternChange={setEditPatternOpen}
+          onDeletePatternChange={setPatternToDelete}
+          onUpdateNewPattern={setNewPattern}
+          onUpdateIsRegex={setIsRegex}
+          onUpdatePriority={setPriority}
+          onUpdateEditPattern={setEditPattern}
+          onUpdateEditIsRegex={setEditIsRegex}
+          onUpdateEditPriority={setEditPriority}
+          onCreatePattern={handleAddPattern}
+          onUpdatePattern={handleEditPattern}
+          onDeletePattern={handleDeletePattern}
+        />
 
         {/* Edit Phase Priority Dialog */}
         <Dialog open={editPhaseOpen} onOpenChange={setEditPhaseOpen}>
@@ -581,80 +525,6 @@ export default function PhaseDetectionPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Pattern Dialog */}
-        <Dialog open={editPatternOpen} onOpenChange={setEditPatternOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Pattern</DialogTitle>
-              <DialogDescription>
-                Modify the detection pattern settings.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="editPattern">Pattern</Label>
-                  <RegexValidationBadge pattern={editPattern} isRegex={editIsRegex} />
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    id="editPattern"
-                    value={editPattern}
-                    onChange={(e) => setEditPattern(e.target.value)}
-                    placeholder="Enter pattern text or regex..."
-                    className="font-mono flex-1"
-                  />
-                  <RegexTestDialog
-                    pattern={editPattern}
-                    isRegex={editIsRegex}
-                    onPatternChange={setEditPattern}
-                    onIsRegexChange={setEditIsRegex}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1">
-                    <Label>Use Regex</Label>
-                    <HelpTooltip content={helpContent.regex} />
-                    <RegexHelpDialog trigger={<Button variant="ghost" size="icon-sm" aria-label="Regex help">?</Button>} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Enable regular expression matching
-                  </p>
-                </div>
-                <Switch checked={editIsRegex} onCheckedChange={setEditIsRegex} />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center gap-1">
-                  <Label htmlFor="editPriority">Priority</Label>
-                  <HelpTooltip content={helpContent.phasePriority} />
-                </div>
-                <Input
-                  id="editPriority"
-                  type="number"
-                  value={editPriority}
-                  onChange={(e) => setEditPriority(Number(e.target.value))}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Lower numbers = higher priority
-                </p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEditPatternOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleEditPattern} 
-                disabled={!editPattern.trim() || (editIsRegex && (() => { try { new RegExp(editPattern); return false; } catch { return true; } })())}
-              >
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </main>
     </div>
   );

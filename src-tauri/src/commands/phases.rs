@@ -37,6 +37,7 @@ pub fn phase_pattern_create(payload: PhasePatternCreate) -> CommandResult<PhaseP
 
     let conn = db::get_conn().map_err(error_response)?;
     let id = db::create_phase_pattern(&conn, &payload).map_err(error_response)?;
+    let _ = db::bump_phase_version(&conn);
 
     Ok(PhasePattern {
         id,
@@ -51,7 +52,9 @@ pub fn phase_pattern_create(payload: PhasePatternCreate) -> CommandResult<PhaseP
 #[command]
 pub fn phase_pattern_delete(pattern_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
-    db::delete_phase_pattern(&conn, pattern_id).map_err(error_response)
+    db::delete_phase_pattern(&conn, pattern_id).map_err(error_response)?;
+    let _ = db::bump_phase_version(&conn);
+    Ok(())
 }
 
 #[command]
@@ -95,6 +98,7 @@ pub fn phase_pattern_update(payload: PhasePatternUpdate) -> CommandResult<PhaseP
             payload.id
         ],
     ).map_err(error_response)?;
+    let _ = db::bump_phase_version(&conn);
 
     Ok(PhasePattern {
         id: payload.id,

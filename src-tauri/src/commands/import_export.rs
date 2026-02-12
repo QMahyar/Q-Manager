@@ -831,6 +831,8 @@ pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult>
         }
     }
 
+    let _ = db::bump_phase_version(&conn);
+
     Ok(PatternImportResult {
         imported,
         updated,
@@ -892,6 +894,8 @@ pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult
             imported += 1;
         }
     }
+
+    let _ = db::bump_action_version(&conn);
 
     Ok(PatternImportResult {
         imported,

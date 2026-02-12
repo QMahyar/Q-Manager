@@ -62,6 +62,7 @@ export interface AccountEventHandlers {
   onActionDetected?: (event: ActionDetectedEvent) => void;
   onJoinAttempt?: (event: JoinAttemptEvent) => void;
   onLog?: (event: LogEvent) => void;
+  onRegexValidation?: (event: RegexValidationEvent) => void;
 }
 
 /**
@@ -182,6 +183,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
         toast.error("Invalid regex detected", {
           description: `${event.payload.scope}: ${event.payload.pattern} — ${event.payload.error}`,
         });
+        handlersRef.current?.onRegexValidation?.(event.payload);
       });
       unlisteners.push(unlistenRegex);
 

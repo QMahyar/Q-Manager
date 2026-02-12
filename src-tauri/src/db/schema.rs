@@ -55,6 +55,22 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Pattern versions table (used for cache invalidation)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pattern_versions (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            phase_version INTEGER NOT NULL DEFAULT 0,
+            action_version INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT
+        )",
+        [],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO pattern_versions (id, phase_version, action_version, updated_at)
+         VALUES (1, 0, 0, datetime('now'))",
+        [],
+    )?;
+
     // Settings table (singleton row)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS settings (

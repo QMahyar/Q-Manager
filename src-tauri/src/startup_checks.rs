@@ -170,6 +170,14 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             "API ID not configured",
             Some("Configure API ID in Settings, or set an override in the account's edit page."),
         ));
+    } else if let Some(id) = api_id {
+        if id <= 0 {
+            result.add_error(StartupCheckError::blocking(
+                "API_ID_INVALID",
+                "API ID must be a positive number",
+                Some("Configure a valid API ID in Settings or per-account."),
+            ));
+        }
     }
 
     if api_hash.is_none() {
@@ -178,6 +186,14 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
             "API Hash not configured",
             Some("Configure API Hash in Settings, or set an override in the account's edit page."),
         ));
+    } else if let Some(hash) = &api_hash {
+        if hash.len() != 32 {
+            result.add_error(StartupCheckError::warning(
+                "API_HASH_LENGTH",
+                &format!("API Hash should be 32 characters (got {})", hash.len()),
+                Some("This may prevent login. Verify your API Hash in Settings."),
+            ));
+        }
     }
 
     // 4. Check session directory
@@ -235,6 +251,17 @@ pub fn check_account_can_start(account_id: i64) -> StartupCheckResult {
                 "Session appears to be corrupted",
                 Some("The session directory exists but is missing the Telethon session file (telethon.session).\n\nTry deleting the account and logging in again."),
             ));
+        }
+
+        // Warn if session directory has no files (unexpected)
+        if let Ok(entries) = std::fs::read_dir(&session_dir) {
+            if entries.count() == 0 {
+                result.add_error(StartupCheckError::warning(
+                    "SESSION_EMPTY",
+                    "Session directory is empty",
+                    Some("The session directory exists but contains no files. Try logging in again."),
+                ));
+            }
         }
     }
 

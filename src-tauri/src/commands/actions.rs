@@ -23,6 +23,7 @@ pub fn action_create(payload: ActionCreate) -> CommandResult<Action> {
 
     let conn = db::get_conn().map_err(error_response)?;
     let id = db::create_action(&conn, &payload).map_err(error_response)?;
+    let _ = db::bump_action_version(&conn);
 
     Ok(Action {
         id,
@@ -36,7 +37,9 @@ pub fn action_create(payload: ActionCreate) -> CommandResult<Action> {
 #[command]
 pub fn action_delete(action_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
-    db::delete_action(&conn, action_id).map_err(error_response)
+    db::delete_action(&conn, action_id).map_err(error_response)?;
+    let _ = db::bump_action_version(&conn);
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +71,7 @@ pub fn action_update(payload: ActionUpdate) -> CommandResult<Action> {
         ],
     )
     .map_err(error_response)?;
+    let _ = db::bump_action_version(&conn);
 
     Ok(Action {
         id: payload.id,
@@ -116,6 +120,7 @@ pub fn action_pattern_create(payload: ActionPatternCreate) -> CommandResult<Acti
         ],
     )
     .map_err(error_response)?;
+    let _ = db::bump_action_version(&conn);
 
     let id = conn.last_insert_rowid();
 
@@ -138,6 +143,7 @@ pub fn action_pattern_delete(pattern_id: i64) -> CommandResult<()> {
         params![pattern_id],
     )
     .map_err(error_response)?;
+    let _ = db::bump_action_version(&conn);
     Ok(())
 }
 
@@ -180,6 +186,7 @@ pub fn action_pattern_update(payload: ActionPatternUpdate) -> CommandResult<Acti
             payload.id,
         ],
     ).map_err(error_response)?;
+    let _ = db::bump_action_version(&conn);
 
     Ok(ActionPattern {
         id: payload.id,

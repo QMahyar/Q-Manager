@@ -69,8 +69,10 @@ function generateId(): string {
 /**
  * Real-time activity feed showing events from the backend
  */
+const DEFAULT_MAX_ITEMS = 500;
+
 export function ActivityFeed({
-  maxItems = 100,
+  maxItems = DEFAULT_MAX_ITEMS,
   className = "",
   collapsible = false,
   defaultCollapsed = false,

@@ -5,6 +5,53 @@ use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
+// Pattern Versions (cache invalidation)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternVersions {
+    pub phase_version: i64,
+    pub action_version: i64,
+}
+
+pub fn get_pattern_versions(conn: &Connection) -> Result<PatternVersions> {
+    conn.query_row(
+        "SELECT phase_version, action_version FROM pattern_versions WHERE id = 1",
+        [],
+        |row| {
+            Ok(PatternVersions {
+                phase_version: row.get(0)?,
+                action_version: row.get(1)?,
+            })
+        },
+    )
+}
+
+pub fn bump_phase_version(conn: &Connection) -> Result<i64> {
+    conn.execute(
+        "UPDATE pattern_versions SET phase_version = phase_version + 1, updated_at = datetime('now') WHERE id = 1",
+        [],
+    )?;
+    conn.query_row(
+        "SELECT phase_version FROM pattern_versions WHERE id = 1",
+        [],
+        |row| row.get(0),
+    )
+}
+
+pub fn bump_action_version(conn: &Connection) -> Result<i64> {
+    conn.execute(
+        "UPDATE pattern_versions SET action_version = action_version + 1, updated_at = datetime('now') WHERE id = 1",
+        [],
+    )?;
+    conn.query_row(
+        "SELECT action_version FROM pattern_versions WHERE id = 1",
+        [],
+        |row| row.get(0),
+    )
+}
+
+// ============================================================================
 // Settings
 // ============================================================================
 
