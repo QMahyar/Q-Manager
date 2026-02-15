@@ -209,7 +209,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className={cn("grid w-full", action.is_two_step ? "grid-cols-4" : "grid-cols-3")}>
+          <TabsList className={cn("grid w-full gap-2", action.is_two_step ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
             <TabsTrigger value="targets">
               <IconSettings className="size-4 mr-1" />
               Targets
@@ -232,7 +232,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
 
           <div className="flex-1 overflow-y-auto py-4">
             <TabsContent value="targets" className="mt-0 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <Label htmlFor="use-override">Use custom targets (override default)</Label>
                 <Switch id="use-override" checked={useOverride} onCheckedChange={setUseOverride} />
               </div>
@@ -270,14 +270,14 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
             </TabsContent>
 
             <TabsContent value="delay" className="mt-0 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <Label htmlFor="use-delay-override">Use custom delay (override default)</Label>
                 <Switch id="use-delay-override" checked={useDelayOverride} onCheckedChange={setUseDelayOverride} />
               </div>
 
               {useDelayOverride && (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="min-delay">Min Delay (seconds)</Label>
                       <Input
@@ -325,7 +325,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
             </TabsContent>
 
             <TabsContent value="blacklist" className="mt-0 space-y-4">
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Input
                   value={newBlacklistEntry}
                   onChange={(e) => setNewBlacklistEntry(e.target.value)}
@@ -366,7 +366,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
 
             {action.is_two_step && (
               <TabsContent value="pairs" className="mt-0 space-y-4">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Input
                     value={newPairA}
                     onChange={(e) => setNewPairA(e.target.value)}

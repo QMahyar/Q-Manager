@@ -150,6 +150,7 @@ pub fn run() {
             action_patterns_export,
             action_patterns_import,
             account_export,
+            accounts_export,
             account_session_path,
             // Startup Checks
             check_telethon_available,

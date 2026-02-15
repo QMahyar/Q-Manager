@@ -23,6 +23,9 @@ import type {
   DiagnosticsSnapshot,
   StartupCheckResult,
   BulkStartReport,
+  ExportResult,
+  ExportBatchResult,
+  ExportFormat,
 } from "./types";
 
 // Retry options for critical operations
@@ -295,14 +298,6 @@ export interface ImportResolution {
   existing_account_id?: number | null;
 }
 
-export interface ExportResult {
-  success: boolean;
-  path: string;
-  message: string;
-}
-
-export type ExportFormat = "zip" | "folder";
-
 export interface PatternExport {
   version: number;
   phase_patterns: PatternPhaseRow[];
@@ -361,6 +356,14 @@ export async function importActionPatterns(path: string): Promise<PatternImportR
 
 export async function exportAccount(accountId: number, destPath: string, format: ExportFormat): Promise<ExportResult> {
   return invokeCommand(IPC_COMMANDS.accountExport, { accountId, destPath, format });
+}
+
+export async function exportAccounts(
+  accountIds: number[],
+  destPath: string,
+  format: ExportFormat
+): Promise<ExportBatchResult> {
+  return invokeCommand(IPC_COMMANDS.accountsExport, { accountIds, destPath, format });
 }
 
 export async function getAccountSessionPath(accountId: number): Promise<string | null> {

@@ -7,7 +7,7 @@ interface TooltipProviderProps {
 }
 
 const TooltipProvider: React.FC<TooltipProviderProps> = ({ children }) => {
-  return <>{children}</>
+  return <div className="inline-flex">{children}</div>
 }
 
 interface TooltipProps {

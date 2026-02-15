@@ -12,6 +12,7 @@ export const IPC_COMMANDS = {
   accountsStopAll: "accounts_stop_all",
   accountsStartSelected: "accounts_start_selected",
   accountsStopSelected: "accounts_stop_selected",
+  accountsExport: "accounts_export",
   phasesList: "phases_list",
   phasePatternsList: "phase_patterns_list",
   phasePatternCreate: "phase_pattern_create",

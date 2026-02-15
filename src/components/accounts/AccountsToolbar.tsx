@@ -1,4 +1,10 @@
-import { IconCheckbox, IconSquareOff, IconPlayerPlay, IconPlayerStop, IconSearch } from "@tabler/icons-react";
+import {
+  IconCheckbox,
+  IconSquareOff,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconSearch,
+} from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Table } from "@tanstack/react-table";
@@ -18,6 +24,7 @@ interface AccountsToolbarProps {
   onStopAll: () => void;
   onStartSelected: () => void;
   onStopSelected: () => void;
+  onExportSelected: () => void;
 }
 
 export function AccountsToolbar({
@@ -34,13 +41,14 @@ export function AccountsToolbar({
   onStopAll,
   onStartSelected,
   onStopSelected,
+  onExportSelected,
 }: AccountsToolbarProps) {
   const stoppedCount = accounts.filter((a) => a.status === "stopped" || a.status === "error").length;
   const runningCount = accounts.filter((a) => a.status === "running").length;
 
   return (
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-4 mb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => table.toggleAllRowsSelected(true)}>
           <IconCheckbox className="size-4 mr-1" />
           Select All
@@ -88,10 +96,13 @@ export function AccountsToolbar({
               <IconPlayerStop className="size-4 mr-1" />
               Stop Selected ({selectedCount})
             </Button>
+            <Button size="sm" variant="outline" onClick={onExportSelected}>
+              Export Selected ({selectedCount})
+            </Button>
           </>
         )}
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="relative">
           <IconSearch className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input
@@ -99,7 +110,7 @@ export function AccountsToolbar({
             aria-label="Search accounts"
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-8 w-64"
+            className="pl-8 w-full sm:w-64"
           />
         </div>
         <div className="text-sm text-muted-foreground">

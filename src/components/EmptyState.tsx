@@ -37,7 +37,7 @@ export function EmptyState({
         {icon || <IconInbox className="h-8 w-8 text-muted-foreground" />}
       </div>
       <h3 className="text-lg font-semibold mb-1">{title}</h3>
-      <p className="text-muted-foreground text-sm max-w-sm mb-4">{description}</p>
+      <p className="text-muted-foreground text-sm max-w-md mb-4 text-pretty">{description}</p>
       {action && (
         <Button onClick={action.onClick}>
           <IconPlus className="size-4 mr-2" />

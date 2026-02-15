@@ -31,7 +31,7 @@ export function ActionPatternTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h5 className="text-sm font-medium">{stepLabel || "Trigger Patterns"}</h5>
         <Button size="sm" variant="outline" onClick={() => onAddPattern(action.id, resolvedStep)}>
           <IconPlus className="h-3 w-3 mr-1" />
@@ -56,7 +56,7 @@ export function ActionPatternTable({
               <TableRow key={pattern.id}>
                 <TableCell className="font-mono text-sm">{pattern.pattern}</TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={pattern.is_regex ? "default" : "secondary"} className="text-xs">
                       {pattern.is_regex ? "Regex" : "Text"}
                     </Badge>

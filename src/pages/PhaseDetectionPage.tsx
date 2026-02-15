@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageTransition } from "@/components/motion/PageTransition";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import {
@@ -23,6 +24,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PhasePatternDialogs } from "@/components/phases/PhasePatternDialogs";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -228,43 +239,45 @@ export default function PhaseDetectionPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <PageTransition className="min-h-screen flex flex-col">
       <PageHeader
         title="Phase Detection"
         description="Configure patterns to detect game phases"
       >
-        {regexIssues.length > 0 && (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-            <div className="font-medium">Invalid regex patterns detected</div>
-            <ul className="mt-2 list-disc pl-5 space-y-1">
-              {regexIssues.map((issue, index) => (
-                <li key={`${issue.scope}-${issue.pattern}-${index}`}>
-                  {issue.scope}: {issue.pattern} — {issue.error}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-2">
-              <Button variant="outline" size="sm" onClick={() => setRegexIssues([])}>
-                Clear
-              </Button>
+        <div className="flex items-start gap-2 flex-wrap justify-end">
+          {regexIssues.length > 0 && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive max-w-sm">
+              <div className="font-medium">Invalid regex patterns detected</div>
+              <ul className="mt-2 list-disc pl-5 space-y-1">
+                {regexIssues.map((issue, index) => (
+                  <li key={`${issue.scope}-${issue.pattern}-${index}`}>
+                    {issue.scope}: {issue.pattern} — {issue.error}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2">
+                <Button variant="outline" size="sm" onClick={() => setRegexIssues([])}>
+                  Clear
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-        <Button
-          variant="outline"
-          onClick={handleReloadPatterns}
-          disabled={isReloading}
-        >
-          <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
-          Reload Patterns
-        </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={handleReloadPatterns}
+            disabled={isReloading}
+          >
+            <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
+            Reload Patterns
+          </Button>
+        </div>
       </PageHeader>
       <main className="flex-1 p-6 w-full max-w-6xl mx-auto">
         <Tabs
           value={String(selectedPhaseId)}
           onValueChange={(v) => setSelectedPhaseId(Number(v))}
         >
-          <TabsList className="mb-4">
+          <TabsList className="mb-4 flex-wrap">
             {phases.map((phase) => (
               <TabsTrigger key={phase.id} value={String(phase.id)}>
                 {phase.display_name}
@@ -277,7 +290,7 @@ export default function PhaseDetectionPage() {
               <div className="space-y-4">
                 {/* Phase Info */}
                 <div className="bg-muted/50 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="font-medium">{phase.display_name}</h3>
                       <p className="text-sm text-muted-foreground mt-1">
@@ -298,11 +311,11 @@ export default function PhaseDetectionPage() {
                 </div>
 
                 {/* Patterns Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h4 className="text-sm font-medium">
                     Patterns ({patterns.length})
                   </h4>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-muted-foreground">Exports all phases</span>
                     <Button
                       size="sm"
@@ -407,7 +420,7 @@ export default function PhaseDetectionPage() {
                                 {pattern.pattern}
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                   <Badge variant={pattern.is_regex ? "default" : "secondary"}>
                                     {pattern.is_regex ? "Regex" : "Text"}
                                   </Badge>
@@ -526,6 +539,6 @@ export default function PhaseDetectionPage() {
         </Dialog>
 
       </main>
-    </div>
+    </PageTransition>
   );
 }

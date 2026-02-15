@@ -292,10 +292,15 @@ export default function SettingsPage() {
   return (
     <PageTransition className="min-h-screen flex flex-col">
       <PageHeader title="Settings" description="Global configuration and defaults">
-        <Button onClick={handleSave} disabled={!hasChanges || saveMutation.isPending}>
-          <IconDeviceFloppy className="size-4 mr-1" />
-          {saveMutation.isPending ? "Saving..." : "Save Changes"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasChanges && (
+            <Badge variant="secondary">Unsaved changes</Badge>
+          )}
+          <Button onClick={handleSave} disabled={!hasChanges || saveMutation.isPending}>
+            <IconDeviceFloppy className="size-4 mr-1" />
+            {saveMutation.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
       </PageHeader>
 
       <main className="flex-1 p-6 space-y-6 w-full max-w-3xl mx-auto">

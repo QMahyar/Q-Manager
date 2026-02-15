@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useParams, useNavigate } from "react-router-dom";
+import { PageTransition } from "@/components/motion/PageTransition";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import {
-  IconArrowLeft,
   IconDeviceFloppy,
   IconRefresh,
   IconSearch,
@@ -270,26 +270,17 @@ export default function AccountEditPage() {
 
   if (!account) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <header className="border-b border-border px-6 py-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/accounts")}>
-              <IconArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Account Not Found</h1>
-            </div>
-          </div>
-        </header>
+      <PageTransition className="min-h-screen flex flex-col">
+        <PageHeader title="Account Not Found" backTo="/accounts" />
         <main className="flex-1 p-6 flex items-center justify-center">
           <p className="text-muted-foreground">The requested account does not exist.</p>
         </main>
-      </div>
+      </PageTransition>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <PageTransition className="min-h-screen flex flex-col">
       <PageHeader
         title="Edit Account"
         description={account.telegram_name || account.phone || `ID: ${account.user_id}`}
@@ -331,7 +322,7 @@ export default function AccountEditPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label className="text-muted-foreground">Telegram Name</Label>
                 <p className="text-sm">{account.telegram_name || "-"}</p>
@@ -376,7 +367,7 @@ export default function AccountEditPage() {
             )}
             {slots.map((slot) => (
               <div key={slot.slot} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-3">
                     <h4 className="font-medium">Slot {slot.slot}</h4>
                     <Switch
@@ -394,7 +385,7 @@ export default function AccountEditPage() {
                     {/* Group Selection */}
                     <div className="grid gap-2">
                       <Label>Game Group</Label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {slot.group_title ? (
                           <div className="flex-1 flex items-center justify-between border rounded-md px-3 py-2">
                             <span>{slot.group_title}</span>
@@ -429,7 +420,7 @@ export default function AccountEditPage() {
                     {/* Moderator Bot Selection */}
                     <div className="grid gap-2">
                       <Label>Moderator Bot</Label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           variant={slot.moderator_kind === "main" ? "default" : "outline"}
                           size="sm"
@@ -466,7 +457,7 @@ export default function AccountEditPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="joinMaxAttemptsOverride">Max Join Attempts</Label>
                 <Input
@@ -601,6 +592,6 @@ export default function AccountEditPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageTransition>
   );
 }

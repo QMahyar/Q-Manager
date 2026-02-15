@@ -14,6 +14,7 @@ pub const CMD_ACCOUNTS_START_ALL: &str = "accounts_start_all";
 pub const CMD_ACCOUNTS_STOP_ALL: &str = "accounts_stop_all";
 pub const CMD_ACCOUNTS_START_SELECTED: &str = "accounts_start_selected";
 pub const CMD_ACCOUNTS_STOP_SELECTED: &str = "accounts_stop_selected";
+pub const CMD_ACCOUNTS_EXPORT: &str = "accounts_export";
 pub const CMD_PHASES_LIST: &str = "phases_list";
 pub const CMD_PHASE_PATTERNS_LIST: &str = "phase_patterns_list";
 pub const CMD_PHASE_PATTERN_CREATE: &str = "phase_pattern_create";

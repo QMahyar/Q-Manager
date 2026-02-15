@@ -15,7 +15,7 @@ export function PageHeader({ title, description, children, backTo = "/" }: PageH
 
   return (
     <header className="border-b border-border/70 bg-background/80 backdrop-blur px-6 py-4 sticky top-0 z-10 shadow-sm">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(backTo)} className="hover:bg-primary/10">
             <IconArrowLeft className="h-5 w-5" />
@@ -27,7 +27,7 @@ export function PageHeader({ title, description, children, backTo = "/" }: PageH
             )}
           </div>
         </div>
-        {children && <div className="flex items-center gap-2">{children}</div>}
+        {children && <div className="flex flex-wrap items-center gap-2 md:justify-end">{children}</div>}
       </div>
     </header>
   );

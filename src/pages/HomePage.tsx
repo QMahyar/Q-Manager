@@ -86,7 +86,7 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-background via-background to-primary/5">
       {/* Header */}
       <header className="border-b border-border/70 bg-background/80 backdrop-blur px-6 py-4 flex flex-col gap-3 sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <WolfLogo size={48} animate={true} />
             <div>
@@ -115,7 +115,7 @@ export default function HomePage() {
                   ))}
                 </ul>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex flex-wrap gap-2 shrink-0">
                 <Button variant="outline" size="sm" onClick={() => navigate("/settings")}>Open Settings</Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowSystemBanner(false)}>Dismiss</Button>
               </div>

@@ -84,7 +84,7 @@ export function TargetsActionView({
               {accounts.length === 0 ? (
                 <div className="text-center py-4 text-muted-foreground">No accounts configured yet.</div>
               ) : (
-                <Table>
+                <Table className="min-w-full">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Account</TableHead>

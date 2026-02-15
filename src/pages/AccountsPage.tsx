@@ -50,6 +50,7 @@ import {
   importAccountPreflight,
   importAccountResolve,
   exportAccount,
+  exportAccounts,
   checkAccountStart,
   type ExportFormat,
   type ImportConflict,
@@ -91,6 +92,7 @@ export default function AccountsPage() {
   const [accountToExport, setAccountToExport] = useState<Account | null>(null);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("zip");
   const [exporting, setExporting] = useState(false);
+  const [exportingMultiple, setExportingMultiple] = useState(false);
   
   // Batch operation confirmation dialogs
   const [startAllDialogOpen, setStartAllDialogOpen] = useState(false);
@@ -504,15 +506,15 @@ export default function AccountsPage() {
   // Export handlers
   const handleExport = async () => {
     if (!accountToExport) return;
-    
+
     const result = await saveDialog({
       title: "Export session",
       defaultPath: `${accountToExport.account_name}_session${exportFormat === "zip" ? ".zip" : ""}`,
       filters: exportFormat === "zip" ? [{ name: "ZIP Archive", extensions: ["zip"] }] : [],
     });
-    
+
     if (!result) return;
-    
+
     setExporting(true);
     try {
       const exportResult = await exportAccount(accountToExport.id, result, exportFormat);
@@ -533,6 +535,40 @@ export default function AccountsPage() {
       });
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportSelected = async () => {
+    if (selectedAccountIds.length === 0) return;
+
+    const result = await saveDialog({
+      title: `Export ${selectedAccountIds.length} sessions`,
+      defaultPath: `accounts_sessions${exportFormat === "zip" ? ".zip" : ""}`,
+      filters: exportFormat === "zip" ? [{ name: "ZIP Archive", extensions: ["zip"] }] : [],
+    });
+
+    if (!result) return;
+
+    setExportingMultiple(true);
+    try {
+      const exportResult = await exportAccounts(selectedAccountIds, result, exportFormat);
+      if (exportResult.success) {
+        toast.success("Accounts exported", {
+          description: exportResult.message,
+        });
+      } else {
+        toast.error("Export completed with errors", {
+          description: exportResult.message,
+        });
+      }
+      setExportDialogOpen(false);
+      setAccountToExport(null);
+    } catch (error) {
+      toast.error("Export failed", {
+        description: getErrorMessage(error),
+      });
+    } finally {
+      setExportingMultiple(false);
     }
   };
 
@@ -587,6 +623,10 @@ export default function AccountsPage() {
             },
           })}
           onStopSelected={() => stopSelectedMutation.mutate(selectedAccountIds)}
+          onExportSelected={() => {
+            setAccountToExport(null);
+            setExportDialogOpen(true);
+          }}
         />
 
         <AccountsTable
@@ -786,9 +826,11 @@ export default function AccountsPage() {
         <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Export Session</DialogTitle>
+              <DialogTitle>{accountToExport ? "Export Session" : "Export Sessions"}</DialogTitle>
               <DialogDescription>
-                Export "{accountToExport?.account_name}" session for backup or transfer.
+                {accountToExport
+                  ? `Export "${accountToExport.account_name}" session for backup or transfer.`
+                  : `Export ${selectedCount} selected session${selectedCount === 1 ? "" : "s"} for backup or transfer.`}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -807,14 +849,25 @@ export default function AccountsPage() {
                   ZIP is recommended for sharing or backup. Raw folder copies all session files directly.
                 </p>
               </div>
+              <div className="rounded-lg border p-3 text-xs text-muted-foreground">
+                {accountToExport
+                  ? "Exports only this account. Use Export Selected to export multiple accounts."
+                  : "Exports selected accounts as a single bundle."}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setExportDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleExport} disabled={exporting}>
-                {exporting ? "Exporting..." : "Export"}
-              </Button>
+              {accountToExport ? (
+                <Button onClick={handleExport} disabled={exporting}>
+                  {exporting ? "Exporting..." : "Export"}
+                </Button>
+              ) : (
+                <Button onClick={handleExportSelected} disabled={exportingMultiple}>
+                  {exportingMultiple ? "Exporting..." : `Export ${selectedCount}`}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -90,7 +90,7 @@ export function TargetsAccountView({
         {selectedAccountId ? (
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <CardTitle className="text-base">
                   Targets for {accounts.find((a) => a.id === selectedAccountId)?.account_name}
                 </CardTitle>
@@ -122,7 +122,7 @@ export function TargetsAccountView({
                             : "Using global defaults"}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="secondary">
                           {action.button_type === "player_list"
                             ? "Player List"

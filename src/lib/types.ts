@@ -99,6 +99,28 @@ export interface DiagnosticsSnapshot {
   running_workers: number;
 }
 
+export interface ExportResult {
+  success: boolean;
+  path: string;
+  message: string;
+}
+
+export interface ExportBatchItem {
+  account_id: number;
+  account_name: string;
+  success: boolean;
+  message: string;
+}
+
+export interface ExportBatchResult {
+  success: boolean;
+  path: string;
+  message: string;
+  items: ExportBatchItem[];
+}
+
+export type ExportFormat = "zip" | "folder";
+
 export interface AccountCreate {
   account_name: string;
   telegram_name?: string | null;

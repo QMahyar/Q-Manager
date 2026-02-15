@@ -120,7 +120,7 @@ export default function TargetsPage() {
       <main className="flex-1 p-6 w-full max-w-6xl mx-auto">
         <Tabs value={view} onValueChange={(v) => setView(v as "account" | "action")}>
           <div className="flex items-center justify-between mb-4">
-            <TabsList>
+            <TabsList className="flex-wrap">
               <TabsTrigger value="account">
                 <IconUser className="size-4 mr-1" />
                 Account-First

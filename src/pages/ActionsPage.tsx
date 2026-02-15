@@ -366,108 +366,110 @@ export default function ActionsPage() {
         title="Actions"
         description="Define action triggers and button types"
       >
-        {regexIssues.length > 0 && (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-            <div className="font-medium">Invalid regex patterns detected</div>
-            <ul className="mt-2 list-disc pl-5 space-y-1">
-              {regexIssues.map((issue, index) => (
-                <li key={`${issue.scope}-${issue.pattern}-${index}`}>
-                  {issue.scope}: {issue.pattern} — {issue.error}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-2">
-              <Button variant="outline" size="sm" onClick={() => setRegexIssues([])}>
-                Clear
-              </Button>
+        <div className="flex items-start gap-2 flex-wrap justify-end">
+          {regexIssues.length > 0 && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive max-w-sm">
+              <div className="font-medium">Invalid regex patterns detected</div>
+              <ul className="mt-2 list-disc pl-5 space-y-1">
+                {regexIssues.map((issue, index) => (
+                  <li key={`${issue.scope}-${issue.pattern}-${index}`}>
+                    {issue.scope}: {issue.pattern} — {issue.error}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2">
+                <Button variant="outline" size="sm" onClick={() => setRegexIssues([])}>
+                  Clear
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <span className="text-xs text-muted-foreground self-center">Exports all actions</span>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              const path = await saveDialog({
-                title: "Export action patterns",
-                defaultPath: "action-patterns.json",
-                filters: [{ name: "JSON", extensions: ["json"] }],
-              });
-              if (!path) return;
-              setIsExporting(true);
-              try {
-                await exportActionPatterns(path as string);
-                toast.success("Action patterns exported", {
-                  description: "JSON file saved successfully.",
+          )}
+          <div className="flex gap-2 flex-wrap justify-end">
+            <span className="text-xs text-muted-foreground self-center">Exports all actions</span>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const path = await saveDialog({
+                  title: "Export action patterns",
+                  defaultPath: "action-patterns.json",
+                  filters: [{ name: "JSON", extensions: ["json"] }],
                 });
-              } catch (e) {
-                toast.error("Failed to export patterns", { description: getErrorMessage(e) });
-              } finally {
-                setIsExporting(false);
-              }
-            }}
-            disabled={isExporting}
-          >
-            <IconDownload className="size-4 mr-2" />
-            Export
-          </Button>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              const path = await openDialog({
-                title: "Import action patterns",
-                multiple: false,
-                filters: [{ name: "JSON", extensions: ["json"] }],
-              });
-              if (!path) return;
-              setIsImporting(true);
-              try {
-                const result = await importActionPatterns(path as string);
-                toast.success("Action patterns imported", {
-                  description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.`,
-                });
-                if (result.skipped_items?.length) {
-                  toast.warning("Some patterns were skipped", {
-                    description: result.skipped_items.join("; "),
+                if (!path) return;
+                setIsExporting(true);
+                try {
+                  await exportActionPatterns(path as string);
+                  toast.success("Action patterns exported", {
+                    description: "JSON file saved successfully.",
                   });
+                } catch (e) {
+                  toast.error("Failed to export patterns", { description: getErrorMessage(e) });
+                } finally {
+                  setIsExporting(false);
                 }
-                queryClient.invalidateQueries({ queryKey: ["action-patterns"] });
-                await reloadAllPatterns();
-              } catch (e) {
-                toast.error("Failed to import patterns", { description: getErrorMessage(e) });
-              } finally {
-                setIsImporting(false);
-              }
-            }}
-            disabled={isImporting}
-          >
-            <IconUpload className="size-4 mr-2" />
-            Import
-          </Button>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              setIsReloading(true);
-              try {
-                await reloadAllPatterns();
-                toast.success("Patterns reloaded", {
-                  description: "Running workers will now use the updated patterns.",
+              }}
+              disabled={isExporting}
+            >
+              <IconDownload className="size-4 mr-2" />
+              Export
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const path = await openDialog({
+                  title: "Import action patterns",
+                  multiple: false,
+                  filters: [{ name: "JSON", extensions: ["json"] }],
                 });
-              } catch (e) {
-                toast.error("Failed to reload patterns", { description: getErrorMessage(e) });
-              } finally {
-                setIsReloading(false);
-              }
-            }}
-            disabled={isReloading}
-          >
-            <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
-            Reload
-          </Button>
-          <Button onClick={() => { resetActionForm(); setAddActionOpen(true); }}>
-            <IconPlus className="size-4 mr-1" />
-            Add Action
-          </Button>
+                if (!path) return;
+                setIsImporting(true);
+                try {
+                  const result = await importActionPatterns(path as string);
+                  toast.success("Action patterns imported", {
+                    description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.`,
+                  });
+                  if (result.skipped_items?.length) {
+                    toast.warning("Some patterns were skipped", {
+                      description: result.skipped_items.join("; "),
+                    });
+                  }
+                  queryClient.invalidateQueries({ queryKey: ["action-patterns"] });
+                  await reloadAllPatterns();
+                } catch (e) {
+                  toast.error("Failed to import patterns", { description: getErrorMessage(e) });
+                } finally {
+                  setIsImporting(false);
+                }
+              }}
+              disabled={isImporting}
+            >
+              <IconUpload className="size-4 mr-2" />
+              Import
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setIsReloading(true);
+                try {
+                  await reloadAllPatterns();
+                  toast.success("Patterns reloaded", {
+                    description: "Running workers will now use the updated patterns.",
+                  });
+                } catch (e) {
+                  toast.error("Failed to reload patterns", { description: getErrorMessage(e) });
+                } finally {
+                  setIsReloading(false);
+                }
+              }}
+              disabled={isReloading}
+            >
+              <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
+              Reload
+            </Button>
+            <Button onClick={() => { resetActionForm(); setAddActionOpen(true); }}>
+              <IconPlus className="size-4 mr-1" />
+              Add Action
+            </Button>
+          </div>
         </div>
       </PageHeader>
 
@@ -493,7 +495,7 @@ export default function ActionsPage() {
                     )
                   }
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       {expandedActionId === action.id ? (
                         <IconChevronDown className="size-4 text-muted-foreground" />
@@ -509,7 +511,7 @@ export default function ActionsPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={getButtonTypeBadgeVariant(action.button_type)}>
                         {getButtonTypeLabel(action.button_type)}
                       </Badge>

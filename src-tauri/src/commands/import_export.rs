@@ -531,6 +531,22 @@ pub struct ExportResult {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportBatchResult {
+    pub success: bool,
+    pub path: String,
+    pub message: String,
+    pub items: Vec<ExportBatchItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportBatchItem {
+    pub account_id: i64,
+    pub account_name: String,
+    pub success: bool,
+    pub message: String,
+}
+
 /// Export format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExportFormat {
@@ -543,6 +559,14 @@ pub enum ExportFormat {
 /// Export an account's session
 #[command]
 pub fn account_export(
+    account_id: i64,
+    dest_path: String,
+    format: ExportFormat,
+) -> CommandResult<ExportResult> {
+    export_single_account(account_id, dest_path, format)
+}
+
+fn export_single_account(
     account_id: i64,
     dest_path: String,
     format: ExportFormat,
@@ -603,7 +627,7 @@ pub fn account_export(
                 SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
             // Add all files from session directory
-            add_dir_to_zip(&mut zip, &session_dir, &session_dir, options)
+            add_dir_to_zip(&mut zip, &session_dir, &session_dir, options, None)
                 .map_err(error_response)?;
 
             zip.finish().map_err(error_response)?;
@@ -630,25 +654,240 @@ pub fn account_export(
 }
 
 /// Add a directory recursively to a ZIP archive
+#[command]
+pub fn accounts_export(
+    account_ids: Vec<i64>,
+    dest_path: String,
+    format: ExportFormat,
+) -> CommandResult<ExportBatchResult> {
+    if account_ids.is_empty() {
+        return Ok(ExportBatchResult {
+            success: false,
+            path: dest_path,
+            message: "No accounts selected".to_string(),
+            items: Vec::new(),
+        });
+    }
+
+    let dest = PathBuf::from(&dest_path);
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(error_response)?;
+    }
+
+    match format {
+        ExportFormat::Zip => export_accounts_zip(account_ids, dest),
+        ExportFormat::Folder => export_accounts_folder(account_ids, dest),
+    }
+}
+
+fn export_accounts_zip(account_ids: Vec<i64>, dest: PathBuf) -> CommandResult<ExportBatchResult> {
+    let zip_path = if dest.extension().map(|e| e == "zip").unwrap_or(false) {
+        dest
+    } else {
+        dest.join("accounts_sessions.zip")
+    };
+
+    if let Some(parent) = zip_path.parent() {
+        fs::create_dir_all(parent).map_err(error_response)?;
+    }
+
+    let file = fs::File::create(&zip_path).map_err(error_response)?;
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+    let mut items = Vec::new();
+    let mut failed = 0usize;
+
+    for account_id in account_ids {
+        match export_account_to_zip(&mut zip, &options, account_id) {
+            Ok((name, message)) => {
+                items.push(ExportBatchItem {
+                    account_id,
+                    account_name: name,
+                    success: true,
+                    message,
+                });
+            }
+            Err(err) => {
+                failed += 1;
+                items.push(ExportBatchItem {
+                    account_id,
+                    account_name: format!("Account {}", account_id),
+                    success: false,
+                    message: err.message,
+                });
+            }
+        }
+    }
+
+    zip.finish().map_err(error_response)?;
+
+    let success = failed == 0;
+    let message = if success {
+        format!("Exported {} account(s) to {}", items.len(), zip_path.display())
+    } else {
+        format!(
+            "Exported {} account(s) with {} failure(s). Output: {}",
+            items.len() - failed,
+            failed,
+            zip_path.display()
+        )
+    };
+
+    Ok(ExportBatchResult {
+        success,
+        path: zip_path.to_string_lossy().to_string(),
+        message,
+        items,
+    })
+}
+
+fn export_account_to_zip(
+    zip: &mut ZipWriter<std::fs::File>,
+    options: &SimpleFileOptions,
+    account_id: i64,
+) -> Result<(String, String), crate::errors::ErrorResponse> {
+    let (account_name, session_dir) = get_account_export_info(account_id)?;
+
+    if !session_dir.exists() {
+        return Err(error_response(format!(
+            "Session directory not found for {}",
+            account_name
+        )));
+    }
+
+    let base_path = session_dir.clone();
+    let file_prefix = format!("{}_session", account_name);
+    add_dir_to_zip(zip, &base_path, &session_dir, *options, Some(&file_prefix))
+        .map_err(error_response)?;
+
+    Ok((
+        account_name,
+        format!("Session exported from {}", session_dir.display()),
+    ))
+}
+
+fn export_accounts_folder(account_ids: Vec<i64>, dest: PathBuf) -> CommandResult<ExportBatchResult> {
+    fs::create_dir_all(&dest).map_err(error_response)?;
+
+    let mut items = Vec::new();
+    let mut failed = 0usize;
+
+    for account_id in account_ids {
+        match export_account_to_folder(account_id, &dest) {
+            Ok((name, message)) => {
+                items.push(ExportBatchItem {
+                    account_id,
+                    account_name: name,
+                    success: true,
+                    message,
+                });
+            }
+            Err(err) => {
+                failed += 1;
+                items.push(ExportBatchItem {
+                    account_id,
+                    account_name: format!("Account {}", account_id),
+                    success: false,
+                    message: err.message,
+                });
+            }
+        }
+    }
+
+    let success = failed == 0;
+    let message = if success {
+        format!("Exported {} account(s) to {}", items.len(), dest.display())
+    } else {
+        format!(
+            "Exported {} account(s) with {} failure(s). Output: {}",
+            items.len() - failed,
+            failed,
+            dest.display()
+        )
+    };
+
+    Ok(ExportBatchResult {
+        success,
+        path: dest.to_string_lossy().to_string(),
+        message,
+        items,
+    })
+}
+
+fn export_account_to_folder(
+    account_id: i64,
+    dest: &PathBuf,
+) -> Result<(String, String), crate::errors::ErrorResponse> {
+    let (account_name, session_dir) = get_account_export_info(account_id)?;
+
+    if !session_dir.exists() {
+        return Err(error_response(format!(
+            "Session directory not found for {}",
+            account_name
+        )));
+    }
+
+    let folder_path = dest.join(format!("{}_session", account_name));
+    copy_dir_recursive(&session_dir, &folder_path).map_err(error_response)?;
+
+    Ok((
+        account_name,
+        format!("Session exported to {}", folder_path.display()),
+    ))
+}
+
+fn get_account_export_info(account_id: i64) -> Result<(String, PathBuf), crate::errors::ErrorResponse> {
+    let conn = db::get_conn().map_err(error_response)?;
+    let (account_name, user_id): (String, Option<i64>) = conn
+        .query_row(
+            "SELECT account_name, user_id FROM accounts WHERE id = ?1",
+            params![account_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(error_response)?;
+    drop(conn);
+
+    let sessions_dir = get_sessions_dir();
+    let session_dir = if let Some(uid) = user_id {
+        let dir_by_uid = sessions_dir.join(format!("account_{}", uid));
+        if dir_by_uid.exists() {
+            dir_by_uid
+        } else {
+            get_account_session_dir(account_id)
+        }
+    } else {
+        get_account_session_dir(account_id)
+    };
+
+    Ok((account_name, session_dir))
+}
+
 fn add_dir_to_zip<W: Write + std::io::Seek>(
     zip: &mut ZipWriter<W>,
     base_path: &std::path::Path,
     current_path: &std::path::Path,
     options: SimpleFileOptions,
+    prefix: Option<&str>,
 ) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(current_path)? {
         let entry = entry?;
         let path = entry.path();
-        let name = path
+        let relative_name = path
             .strip_prefix(base_path)
             .map_err(|e| std::io::Error::other(e.to_string()))?
             .to_string_lossy()
             .to_string();
+        let name = if let Some(prefix) = prefix {
+            format!("{}/{}", prefix, relative_name)
+        } else {
+            relative_name
+        };
 
         if path.is_dir() {
             zip.add_directory(&name, options)
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
-            add_dir_to_zip(zip, base_path, &path, options)?;
+            add_dir_to_zip(zip, base_path, &path, options, prefix)?;
         } else {
             zip.start_file(&name, options)
                 .map_err(|e| std::io::Error::other(e.to_string()))?;

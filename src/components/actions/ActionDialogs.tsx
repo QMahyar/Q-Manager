@@ -158,7 +158,7 @@ export function ActionDialogs({
                 id="button-type"
                 value={newButtonType}
                 onChange={(e) => onUpdateNewButtonType(e.target.value as ButtonType)}
-                className="w-full border rounded px-3 py-2 text-sm bg-background"
+                className="w-full border rounded px-3 py-2 text-sm bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <option value="player_list">Player List</option>
                 <option value="yes_no">Yes/No</option>
@@ -217,7 +217,7 @@ export function ActionDialogs({
                 id="edit-button-type"
                 value={newButtonType}
                 onChange={(e) => onUpdateNewButtonType(e.target.value as ButtonType)}
-                className="w-full border rounded px-3 py-2 text-sm bg-background"
+                className="w-full border rounded px-3 py-2 text-sm bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <option value="player_list">Player List</option>
                 <option value="yes_no">Yes/No</option>
