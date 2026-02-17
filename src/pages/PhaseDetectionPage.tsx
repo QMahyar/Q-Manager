@@ -10,6 +10,7 @@ import {
   IconFlask,
   IconDownload,
   IconUpload,
+  IconClipboardList,
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,7 @@ import { toast } from "@/components/ui/sonner";
 import { RegexTestDialog, RegexValidationBadge } from "@/components/RegexTestDialog";
 import { useAccountEvents, RegexValidationEvent } from "@/hooks/useAccountEvents";
 import { HelpTooltip, helpContent } from "@/components/HelpTooltip";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 
 export default function PhaseDetectionPage() {
   const queryClient = useQueryClient();
@@ -120,7 +121,7 @@ export default function PhaseDetectionPage() {
       queryClient.invalidateQueries({ queryKey: ["phase-patterns", selectedPhaseId] });
       toast.success("Pattern deleted");
     },
-    onError: (e) => toast.error("Failed to delete pattern", { description: getErrorMessage(e) }),
+    onError: (e) => toastError("Failed to delete pattern", e),
   });
 
   // Update pattern mutation (for edit and toggle)
@@ -132,7 +133,7 @@ export default function PhaseDetectionPage() {
       setPatternToEdit(null);
       toast.success("Pattern updated");
     },
-    onError: (e) => toast.error("Failed to update pattern", { description: getErrorMessage(e) }),
+    onError: (e) => toastError("Failed to update pattern", e),
   });
 
   const handleAddPattern = () => {
@@ -200,7 +201,7 @@ export default function PhaseDetectionPage() {
       setEditPhaseOpen(false);
       toast.success("Phase priority updated");
     },
-    onError: (e) => toast.error("Failed to update phase priority", { description: getErrorMessage(e) }),
+    onError: (e) => toastError("Failed to update phase priority", e),
   });
 
   const handleUpdatePhasePriority = () => {
@@ -222,7 +223,7 @@ export default function PhaseDetectionPage() {
         description: "Running workers will now use the updated patterns.",
       });
     } catch (e) {
-      toast.error("Failed to reload patterns", { description: getErrorMessage(e) });
+      toastError("Failed to reload patterns", e);
     } finally {
       setIsReloading(false);
     }
@@ -334,7 +335,7 @@ export default function PhaseDetectionPage() {
                             description: "JSON file saved successfully.",
                           });
                         } catch (e) {
-                          toast.error("Failed to export patterns", { description: getErrorMessage(e) });
+                          toastError("Failed to export patterns", e);
                         } finally {
                           setIsExporting(false);
                         }
@@ -368,7 +369,7 @@ export default function PhaseDetectionPage() {
                           queryClient.invalidateQueries({ queryKey: ["phase-patterns"], exact: false });
                           await reloadAllPatterns();
                         } catch (e) {
-                          toast.error("Failed to import patterns", { description: getErrorMessage(e) });
+                          toastError("Failed to import patterns", e);
                         } finally {
                           setIsImporting(false);
                         }
@@ -394,11 +395,11 @@ export default function PhaseDetectionPage() {
                     Loading patterns...
                   </div>
                 ) : patterns.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground border rounded-lg">
-                    No patterns configured for this phase.
-                    <br />
-                    Click "Add Pattern" to create one.
-                  </div>
+                  <EmptyState
+                    title="No patterns configured"
+                    description="Click Add Pattern to create one for this phase."
+                    icon={<IconClipboardList className="h-8 w-8 text-muted-foreground" />}
+                  />
                 ) : (
                   <div className="border rounded-lg">
                     <Table>

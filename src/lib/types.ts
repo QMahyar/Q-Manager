@@ -265,6 +265,17 @@ export interface TargetPair {
 }
 
 // ============================================================================
+// Diagnostics
+// ============================================================================
+
+export interface DiagnosticsSnapshot {
+  timestamp_ms: number;
+  uptime_ms: number;
+  total_workers: number;
+  running_workers: number;
+}
+
+// ============================================================================
 // Action Mutation Payloads (for type-safe mutations)
 // ============================================================================
 

@@ -3,26 +3,6 @@
 
 use rusqlite::{Connection, Result};
 
-fn ensure_settings_column(conn: &Connection, column_name: &str, column_def: &str) -> Result<()> {
-    let mut stmt = conn.prepare("PRAGMA table_info(settings)")?;
-    let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
-    let mut exists = false;
-    for column in columns {
-        if column? == column_name {
-            exists = true;
-            break;
-        }
-    }
-    if !exists {
-        let sql = format!(
-            "ALTER TABLE settings ADD COLUMN {} {}",
-            column_name, column_def
-        );
-        conn.execute(&sql, [])?;
-    }
-    Ok(())
-}
-
 /// Initialize the database schema
 pub fn init_db(conn: &Connection) -> Result<()> {
     // ========================================================================
@@ -37,22 +17,6 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         PRAGMA cache_size = -64000;          -- 64MB page cache
         PRAGMA temp_store = MEMORY;          -- Store temp tables in memory
     ",
-    )?;
-
-    // Schema version table
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS schema_version (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            version INTEGER NOT NULL,
-            updated_at TEXT
-        )",
-        [],
-    )?;
-
-    conn.execute(
-        "INSERT OR IGNORE INTO schema_version (id, version, updated_at)
-         VALUES (1, 1, datetime('now'))",
-        [],
     )?;
 
     // Pattern versions table (used for cache invalidation)
@@ -97,23 +61,6 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     conn.execute(
         "INSERT OR IGNORE INTO settings (id, created_at, updated_at) 
          VALUES (1, datetime('now'), datetime('now'))",
-        [],
-    )?;
-
-    // Lightweight migration for theme settings columns
-    ensure_settings_column(conn, "theme_mode", "TEXT NOT NULL DEFAULT 'system'")?;
-    ensure_settings_column(conn, "theme_palette", "TEXT NOT NULL DEFAULT 'zinc'")?;
-    ensure_settings_column(conn, "theme_variant", "TEXT NOT NULL DEFAULT 'subtle'")?;
-    conn.execute(
-        "UPDATE settings SET theme_mode = 'system' WHERE theme_mode IS NULL",
-        [],
-    )?;
-    conn.execute(
-        "UPDATE settings SET theme_palette = 'zinc' WHERE theme_palette IS NULL",
-        [],
-    )?;
-    conn.execute(
-        "UPDATE settings SET theme_variant = 'subtle' WHERE theme_variant IS NULL",
         [],
     )?;
 

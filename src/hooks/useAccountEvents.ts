@@ -4,7 +4,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { startAccount, stopAccount, startAllAccounts, stopAllAccounts } from "@/lib/api";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 import { eventLogger, uiLogger } from "@/lib/logger";
 
 // Debounce configuration
@@ -200,7 +200,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
             source: "useAccountEvents",
             accountId: event.payload,
           });
-          toast.error("Failed to start account", { description: getErrorMessage(err) });
+          toastError("Failed to start account", err);
         }
       });
       unlisteners.push(unlistenTrayStart);
@@ -218,7 +218,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
             source: "useAccountEvents",
             accountId: event.payload,
           });
-          toast.error("Failed to stop account", { description: getErrorMessage(err) });
+          toastError("Failed to stop account", err);
         }
       });
       unlisteners.push(unlistenTrayStop);
@@ -232,7 +232,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
           uiLogger.logError(err, "Failed to start all accounts from tray", {
             source: "useAccountEvents",
           });
-          toast.error("Failed to start all accounts", { description: getErrorMessage(err) });
+          toastError("Failed to start all accounts", err);
         }
       });
       unlisteners.push(unlistenTrayStartAll);
@@ -246,7 +246,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
           uiLogger.logError(err, "Failed to stop all accounts from tray", {
             source: "useAccountEvents",
           });
-          toast.error("Failed to stop all accounts", { description: getErrorMessage(err) });
+          toastError("Failed to stop all accounts", err);
         }
       });
       unlisteners.push(unlistenTrayStopAll);

@@ -19,7 +19,7 @@ import { Separator } from "@/components/ui/separator";
 // Motion-enhanced Card
 const MotionCard = motion.create(Card);
 import { toast } from "@/components/ui/sonner";
-import { useSettingsData, useDelayDefaults, useDelayDefaultMutation, parseBanPatterns } from "@/hooks/useSettingsData";
+import { useSettingsData, useDelayDefaults, useDelayDefaultMutation, parseBanPatterns, useDiagnosticsSnapshot } from "@/hooks/useSettingsData";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SettingsUpdate, BanWarningPattern, ThemeMode, ThemePalette, ThemeVariant } from "@/lib/types";
 import { useTheme } from "@/components/theme-provider";
@@ -75,6 +75,7 @@ export default function SettingsPage() {
   const [delayErrors, setDelayErrors] = useState<Record<number, string>>({});
 
   const { settingsQuery, actionsQuery, saveMutation } = useSettingsData();
+  const { diagnosticsQuery } = useDiagnosticsSnapshot();
   const settings = settingsQuery.data;
   const isLoading = settingsQuery.isLoading;
   const actions = actionsQuery.data ?? [];
@@ -716,6 +717,48 @@ export default function SettingsPage() {
             </CardContent>
           </MotionCard>
         )}
+
+        {/* Diagnostics */}
+        <MotionCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.32 }}
+        >
+          <CardHeader>
+            <CardTitle>Diagnostics</CardTitle>
+            <CardDescription>
+              Snapshot of worker status and uptime for quick health checks.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {diagnosticsQuery.isLoading ? (
+              <div className="text-muted-foreground text-sm">Loading diagnostics...</div>
+            ) : diagnosticsQuery.isError ? (
+              <div className="text-destructive text-sm">Failed to load diagnostics.</div>
+            ) : diagnosticsQuery.data ? (
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Uptime</span>
+                  <span>{Math.floor(diagnosticsQuery.data.uptime_ms / 1000)}s</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Workers</span>
+                  <span>{diagnosticsQuery.data.running_workers} running / {diagnosticsQuery.data.total_workers} total</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Last Updated</span>
+                  <span>{new Date(diagnosticsQuery.data.timestamp_ms).toLocaleString()}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Status</span>
+                  <span>{diagnosticsQuery.data.running_workers > 0 ? "Active" : "Idle"}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-muted-foreground text-sm">No diagnostics available.</div>
+            )}
+          </CardContent>
+        </MotionCard>
 
         {/* Ban Warning Patterns */}
         <MotionCard

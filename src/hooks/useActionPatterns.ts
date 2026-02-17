@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ActionPattern } from "@/lib/types";
 import { invokeCommand } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 import { IPC_COMMANDS } from "@/lib/ipc";
 
 export type ActionPatternCreate = {
@@ -55,7 +55,7 @@ export function useActionPatterns(actionId: number | null) {
       toast.success("Pattern created");
     },
     onError: (error) => {
-      toast.error("Failed to create pattern", { description: getErrorMessage(error) });
+      toastError("Failed to create pattern", error);
     },
   });
 
@@ -66,7 +66,7 @@ export function useActionPatterns(actionId: number | null) {
       toast.success("Pattern updated");
     },
     onError: (error) => {
-      toast.error("Failed to update pattern", { description: getErrorMessage(error) });
+      toastError("Failed to update pattern", error);
     },
   });
 
@@ -77,7 +77,7 @@ export function useActionPatterns(actionId: number | null) {
       toast.success("Pattern deleted");
     },
     onError: (error) => {
-      toast.error("Failed to delete pattern", { description: getErrorMessage(error) });
+      toastError("Failed to delete pattern", error);
     },
   });
 

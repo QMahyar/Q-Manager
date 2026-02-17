@@ -30,7 +30,7 @@ import {
 import { listAccounts, checkAccountNameExists, invokeCommand, updateGroupSlot, getGroupSlots, initGroupSlots } from "@/lib/api";
 import { validateAccountName, validateJoinRules } from "@/lib/validation";
 import { toast } from "@/components/ui/sonner";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 
 interface GroupSlot {
   id: number;
@@ -213,7 +213,7 @@ export default function AccountEditPage() {
       toast.success("Account saved");
     },
     onError: (error) => {
-      toast.error("Failed to save", { description: getErrorMessage(error) });
+      toastError("Failed to save", error);
     },
   });
 

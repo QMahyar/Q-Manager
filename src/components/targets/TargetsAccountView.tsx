@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Account, Action } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,21 @@ export function TargetsAccountView({
     );
   }
 
+  if (actions.length === 0) {
+    return (
+      <EmptyState
+        icon={<IconTarget className="h-8 w-8 text-muted-foreground" />}
+        title="No actions yet"
+        description="Create actions to start setting targeting rules."
+      />
+    );
+  }
+
+  const selectedAccount = useMemo(
+    () => accounts.find((account) => account.id === selectedAccountId) ?? null,
+    [accounts, selectedAccountId]
+  );
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-1">
@@ -87,18 +103,12 @@ export function TargetsAccountView({
       </div>
 
       <div className="lg:col-span-2">
-        {selectedAccountId ? (
+        {selectedAccount ? (
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <CardTitle className="text-base">
-                  Targets for {accounts.find((a) => a.id === selectedAccountId)?.account_name}
-                </CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onStartCopy(accounts.find((a) => a.id === selectedAccountId)!)}
-                >
+                <CardTitle className="text-base">Targets for {selectedAccount.account_name}</CardTitle>
+                <Button variant="outline" size="sm" onClick={() => onStartCopy(selectedAccount)}>
                   <IconCopy className="size-4 mr-1" />
                   Copy Targets
                 </Button>
@@ -139,13 +149,7 @@ export function TargetsAccountView({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() =>
-                            onOpenConfig(
-                              selectedAccountId,
-                              accounts.find((a) => a.id === selectedAccountId)?.account_name || "",
-                              action
-                            )
-                          }
+                          onClick={() => onOpenConfig(selectedAccount.id, selectedAccount.account_name, action)}
                         >
                           Configure
                         </Button>

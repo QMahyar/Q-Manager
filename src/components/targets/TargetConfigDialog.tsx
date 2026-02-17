@@ -26,7 +26,7 @@ import {
 import type { Action, TargetBlacklist, TargetPair, TargetRule } from "@/lib/types";
 import { validateDelay } from "@/lib/validation";
 import { toast } from "@/components/ui/sonner";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 import { IconBan, IconClock, IconHeart, IconPlus, IconSettings, IconTrash } from "@tabler/icons-react";
 
 interface TargetConfigDialogProps {
@@ -109,7 +109,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
       }
     } catch (err) {
       if (!isCancelled()) {
-        toast.error("Failed to load target data", { description: getErrorMessage(err) });
+        toastError("Failed to load target data", err);
       }
     }
   };
@@ -119,7 +119,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
       const result = validateDelay(minDelay, maxDelay);
       if (!result.valid) {
         setDelayError(result.error);
-        toast.error("Invalid delay", { description: result.error });
+        toastError("Invalid delay", result.error);
         return;
       }
     }
@@ -151,7 +151,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
 
       onOpenChange(false);
     } catch (err) {
-      toast.error("Failed to save", { description: getErrorMessage(err) });
+      toastError("Failed to save", err);
     } finally {
       setSaving(false);
     }
@@ -164,7 +164,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
       setBlacklistEntries([...blacklistEntries, entry]);
       setNewBlacklistEntry("");
     } catch (err) {
-      toast.error("Failed to add blacklist entry", { description: getErrorMessage(err) });
+      toastError("Failed to add blacklist entry", err);
     }
   };
 
@@ -173,7 +173,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
       await removeBlacklistEntry(entryId);
       setBlacklistEntries(blacklistEntries.filter((e) => e.id !== entryId));
     } catch (err) {
-      toast.error("Failed to remove blacklist entry", { description: getErrorMessage(err) });
+      toastError("Failed to remove blacklist entry", err);
     }
   };
 
@@ -185,7 +185,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
       setNewPairA("");
       setNewPairB("");
     } catch (err) {
-      toast.error("Failed to add target pair", { description: getErrorMessage(err) });
+      toastError("Failed to add target pair", err);
     }
   };
 
@@ -194,7 +194,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
       await removeTargetPair(pairId);
       setPairs(pairs.filter((p) => p.id !== pairId));
     } catch (err) {
-      toast.error("Failed to remove target pair", { description: getErrorMessage(err) });
+      toastError("Failed to remove target pair", err);
     }
   };
 

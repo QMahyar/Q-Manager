@@ -34,6 +34,8 @@ async def enqueue_event(queue: asyncio.Queue, payload: Dict[str, Any]) -> None:
         except asyncio.QueueEmpty:
             pass
         queue.put_nowait(payload)
+        sys.stderr.write("[telethon-worker] Event queue full; dropped oldest event.\n")
+        sys.stderr.flush()
 
 
 async def event_writer(queue: asyncio.Queue) -> None:

@@ -29,6 +29,11 @@ jobs:
       - name: Run tests
         run: npm test
       
+      - name: Run tests with coverage
+        run: npm run test:coverage:check
+        env:
+          COVERAGE_MIN_LINES: "70"
+      
       - name: Build frontend
         run: npm run build
 
@@ -101,5 +106,4 @@ jobs:
         run: npm ci
       
       - name: Check formatting
-        run: npx prettier --check "src/**/*.{ts,tsx,css}"
-        continue-on-error: true
+        run: npm run format:check

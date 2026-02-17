@@ -61,7 +61,9 @@ import {
 import { useAccountsData } from "@/hooks/useAccountsData";
 import type { Account, AccountStatus, StartupCheckResult, BulkStartReport } from "@/lib/types";
 import { ActivityFeed } from "@/components/ActivityFeed";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
+import { NoAccounts } from "@/components/EmptyState";
+import { TableSkeleton } from "@/components/LoadingSkeleton";
 
 export default function AccountsPage() {
   const navigate = useNavigate();
@@ -316,9 +318,8 @@ export default function AccountsPage() {
       // Start the account
       startMutation.mutate(account.id);
     } catch (error) {
-      toast.error("Failed to validate account", {
-        description: getErrorMessage(error),
-      });
+      toastError("Failed to validate account", error);
+    }
     }
   };
 
@@ -392,9 +393,8 @@ export default function AccountsPage() {
     }
 
     if (failed.length > 0) {
-      toast.error("Some imports failed", {
-        description: failed.map((item) => item.message).join("; "),
-      });
+      toastError("Some imports failed", failed.map((item) => item.message).join("; "));
+    }
     }
   };
 
@@ -407,9 +407,7 @@ export default function AccountsPage() {
       setImportName("");
       resetImportState();
     } catch (error) {
-      toast.error("Import failed", {
-        description: getErrorMessage(error),
-      });
+      toastError("Import failed", error);
     } finally {
       setImporting(false);
     }
@@ -447,9 +445,7 @@ export default function AccountsPage() {
       setImportResolutions([]);
       setImportApplyToAll(false);
     } catch (error) {
-      toast.error("Import failed", {
-        description: getErrorMessage(error),
-      });
+      toastError("Import failed", error);
     } finally {
       setImporting(false);
     }
@@ -525,14 +521,10 @@ export default function AccountsPage() {
         setExportDialogOpen(false);
         setAccountToExport(null);
       } else {
-        toast.error("Export failed", {
-          description: exportResult.message,
-        });
+        toastError("Export failed", exportResult.message);
       }
     } catch (error) {
-      toast.error("Export failed", {
-        description: getErrorMessage(error),
-      });
+      toastError("Export failed", error);
     } finally {
       setExporting(false);
     }
@@ -557,16 +549,12 @@ export default function AccountsPage() {
           description: exportResult.message,
         });
       } else {
-        toast.error("Export completed with errors", {
-          description: exportResult.message,
-        });
+        toastError("Export completed with errors", exportResult.message);
       }
       setExportDialogOpen(false);
       setAccountToExport(null);
     } catch (error) {
-      toast.error("Export failed", {
-        description: getErrorMessage(error),
-      });
+      toastError("Export failed", error);
     } finally {
       setExportingMultiple(false);
     }
@@ -629,13 +617,19 @@ export default function AccountsPage() {
           }}
         />
 
-        <AccountsTable
-          table={table}
-          columns={columns}
-          accounts={accounts}
-          isLoading={isLoading}
-          onCreate={() => setLoginWizardOpen(true)}
-        />
+        {isLoading ? (
+          <TableSkeleton rows={6} columns={7} />
+        ) : accounts.length === 0 ? (
+          <NoAccounts onAdd={() => setLoginWizardOpen(true)} />
+        ) : (
+          <AccountsTable
+            table={table}
+            columns={columns}
+            accounts={accounts}
+            isLoading={isLoading}
+            onCreate={() => setLoginWizardOpen(true)}
+          />
+        )}
 
         {/* Delete Confirmation Dialog */}
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

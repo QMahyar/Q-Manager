@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
-import { IconCopy, IconHandClick, IconUser } from "@tabler/icons-react";
+import { IconTarget } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useTargetsData, useTargetOverrides, useCopyTargets } from "@/hooks/useTargetsData";
-import { TargetsAccountView } from "@/components/targets/TargetsAccountView";
-import { TargetsActionView } from "@/components/targets/TargetsActionView";
 import type { Account, Action } from "@/lib/types";
 import { TargetConfigDialog } from "@/components/targets/TargetConfigDialog";
 import { TargetsCopyDialogs } from "@/components/targets/TargetsCopyDialogs";
+import { TargetsView } from "@/components/targets/TargetsView";
+import { EmptyState } from "@/components/EmptyState";
 // ============================================================================
 // Main Targets Page Component
 // ============================================================================
@@ -36,6 +35,7 @@ export default function TargetsPage() {
   const actions = actionsQuery.data ?? [];
   const accountsLoading = accountsQuery.isLoading;
   const actionsLoading = actionsQuery.isLoading;
+  const targetsError = accountsQuery.isError || actionsQuery.isError;
 
   const { actionOverrides, accountOverrides } = useTargetOverrides(
     selectedAccountId,
@@ -118,49 +118,32 @@ export default function TargetsPage() {
       />
 
       <main className="flex-1 p-6 w-full max-w-6xl mx-auto">
-        <Tabs value={view} onValueChange={(v) => setView(v as "account" | "action")}>
-          <div className="flex items-center justify-between mb-4">
-            <TabsList className="flex-wrap">
-              <TabsTrigger value="account">
-                <IconUser className="size-4 mr-1" />
-                Account-First
-              </TabsTrigger>
-              <TabsTrigger value="action">
-                <IconHandClick className="size-4 mr-1" />
-                Action-First
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          {/* Account-First View */}
-          <TabsContent value="account">
-            <TargetsAccountView
-              accounts={accounts}
-              actions={actions}
-              accountsLoading={accountsLoading}
-              selectedAccountId={selectedAccountId}
-              accountOverrides={accountOverrides}
-              onSelectAccount={setSelectedAccountId}
-              onOpenConfig={openConfigDialog}
-              onStartCopy={handleStartCopy}
-              accountsListRef={accountsListParent}
-              actionsListRef={actionsListParent}
-            />
-          </TabsContent>
-
-          {/* Action-First View */}
-          <TabsContent value="action">
-            <TargetsActionView
-              accounts={accounts}
-              actions={actions}
-              actionsLoading={actionsLoading}
-              selectedActionId={selectedActionId}
-              actionOverrides={actionOverrides}
-              onSelectAction={setSelectedActionId}
-              onOpenConfig={openConfigDialog}
-            />
-          </TabsContent>
-        </Tabs>
+        {targetsError ? (
+          <EmptyState
+            icon={<IconTarget className="h-8 w-8 text-muted-foreground" />}
+            title="Unable to load targets"
+            description="Check your connection or try again."
+          />
+        ) : (
+          <TargetsView
+            view={view}
+            accounts={accounts}
+            actions={actions}
+            accountsLoading={accountsLoading}
+            actionsLoading={actionsLoading}
+            selectedAccountId={selectedAccountId}
+            selectedActionId={selectedActionId}
+            accountOverrides={accountOverrides}
+            actionOverrides={actionOverrides}
+            onViewChange={setView}
+            onSelectAccount={setSelectedAccountId}
+            onSelectAction={setSelectedActionId}
+            onOpenConfig={openConfigDialog}
+            onStartCopy={handleStartCopy}
+            accountsListRef={accountsListParent}
+            actionsListRef={actionsListParent}
+          />
+        )}
 
         <TargetsCopyDialogs
           actions={actions}

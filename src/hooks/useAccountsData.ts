@@ -12,7 +12,7 @@ import {
   stopSelectedAccounts,
 } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 
 export function useAccountsData() {
   const queryClient = useQueryClient();
@@ -29,7 +29,7 @@ export function useAccountsData() {
       toast.success("Account created");
     },
     onError: (error) => {
-      toast.error("Failed to create account", { description: getErrorMessage(error) });
+      toastError("Failed to create account", error);
     },
   });
 
@@ -40,7 +40,7 @@ export function useAccountsData() {
       toast.success("Account deleted");
     },
     onError: (error) => {
-      toast.error("Failed to delete account", { description: getErrorMessage(error) });
+      toastError("Failed to delete account", error);
     },
   });
 
@@ -51,7 +51,7 @@ export function useAccountsData() {
       toast.success("Account started");
     },
     onError: (error) => {
-      toast.error("Failed to start account", { description: getErrorMessage(error) });
+      toastError("Failed to start account", error);
     },
   });
 
@@ -62,7 +62,7 @@ export function useAccountsData() {
       toast.success("Account stopped");
     },
     onError: (error) => {
-      toast.error("Failed to stop account", { description: getErrorMessage(error) });
+      toastError("Failed to stop account", error);
     },
   });
 
@@ -73,7 +73,7 @@ export function useAccountsData() {
       toast.success("Started all accounts");
     },
     onError: (error) => {
-      toast.error("Failed to start all accounts", { description: getErrorMessage(error) });
+      toastError("Failed to start all accounts", error);
     },
   });
 
@@ -84,7 +84,7 @@ export function useAccountsData() {
       toast.success("Stopped all accounts");
     },
     onError: (error) => {
-      toast.error("Failed to stop all accounts", { description: getErrorMessage(error) });
+      toastError("Failed to stop all accounts", error);
     },
   });
 
@@ -95,7 +95,7 @@ export function useAccountsData() {
       toast.success("Started selected accounts");
     },
     onError: (error) => {
-      toast.error("Failed to start selected accounts", { description: getErrorMessage(error) });
+      toastError("Failed to start selected accounts", error);
     },
   });
 
@@ -106,7 +106,7 @@ export function useAccountsData() {
       toast.success("Stopped selected accounts");
     },
     onError: (error) => {
-      toast.error("Failed to stop selected accounts", { description: getErrorMessage(error) });
+      toastError("Failed to stop selected accounts", error);
     },
   });
 

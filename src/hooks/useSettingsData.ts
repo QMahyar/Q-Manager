@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BanWarningPattern, SettingsUpdate } from "@/lib/types";
-import { getSettings, updateSettings, listActions, getDelayDefault, setDelayDefault } from "@/lib/api";
+import { getSettings, updateSettings, listActions, getDelayDefault, setDelayDefault, getDiagnosticsSnapshot } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 
 export function useSettingsData() {
   const queryClient = useQueryClient();
@@ -27,7 +27,7 @@ export function useSettingsData() {
       });
     },
     onError: (error) => {
-      toast.error("Failed to save settings", { description: getErrorMessage(error) });
+      toastError("Failed to save settings", error);
     },
   });
 
@@ -61,6 +61,15 @@ export function useDelayDefaults(actions: { id: number }[]) {
   return { actionDelays, setActionDelays };
 }
 
+export function useDiagnosticsSnapshot() {
+  const diagnosticsQuery = useQuery({
+    queryKey: ["diagnostics"],
+    queryFn: getDiagnosticsSnapshot,
+  });
+
+  return { diagnosticsQuery };
+}
+
 export function useDelayDefaultMutation() {
   const queryClient = useQueryClient();
   const mutation = useMutation({
@@ -70,7 +79,7 @@ export function useDelayDefaultMutation() {
       queryClient.invalidateQueries({ queryKey: ["delay-defaults"] });
     },
     onError: (error) => {
-      toast.error("Failed to update delay defaults", { description: getErrorMessage(error) });
+      toastError("Failed to update delay defaults", error);
     },
   });
   return mutation;

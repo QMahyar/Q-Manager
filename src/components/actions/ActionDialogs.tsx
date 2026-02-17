@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { RegexTestDialog, RegexValidationBadge } from "@/components/RegexTestDialog";
 import { HelpTooltip, helpContent } from "@/components/HelpTooltip";
 import { validateDisplayName } from "@/lib/validation";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 import { toast } from "@/components/ui/sonner";
 import type { Action, ActionCreate, ActionPattern, ActionUpdate, ButtonType } from "@/lib/types";
 import { IconFlask } from "@tabler/icons-react";
@@ -100,7 +100,7 @@ export function ActionDialogs({
     const validation = validateDisplayName(newActionName);
     if (!validation.valid) {
       setNameError(validation.error);
-      toast.error("Invalid name", { description: validation.error });
+      toastError("Invalid name", validation.error);
       return;
     }
     onCreateAction({
@@ -116,7 +116,7 @@ export function ActionDialogs({
     const validation = validateDisplayName(newActionName);
     if (!validation.valid) {
       setNameError(validation.error);
-      toast.error("Invalid name", { description: validation.error });
+      toastError("Invalid name", validation.error);
       return;
     }
     onUpdateAction({

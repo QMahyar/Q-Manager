@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Account, Action } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,21 @@ export function TargetsActionView({
     );
   }
 
+  if (accounts.length === 0) {
+    return (
+      <EmptyState
+        icon={<IconTarget className="h-8 w-8 text-muted-foreground" />}
+        title="No accounts yet"
+        description="Add accounts first to configure targeting rules."
+      />
+    );
+  }
+
+  const selectedAction = useMemo(
+    () => actions.find((action) => action.id === selectedActionId) ?? null,
+    [actions, selectedActionId]
+  );
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-1">
@@ -73,12 +89,10 @@ export function TargetsActionView({
       </div>
 
       <div className="lg:col-span-2">
-        {selectedActionId ? (
+        {selectedAction ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                {actions.find((a) => a.id === selectedActionId)?.name} - Account Targets
-              </CardTitle>
+              <CardTitle className="text-base">{selectedAction.name} - Account Targets</CardTitle>
             </CardHeader>
             <CardContent>
               {accounts.length === 0 ? (
@@ -117,12 +131,7 @@ export function TargetsActionView({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                const action = actions.find((a) => a.id === selectedActionId);
-                                if (action) {
-                                  onOpenConfig(account.id, account.account_name, action);
-                                }
-                              }}
+                              onClick={() => onOpenConfig(account.id, account.account_name, selectedAction)}
                             >
                               Configure
                             </Button>

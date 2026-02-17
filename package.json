@@ -15,7 +15,10 @@
     "release:installer": "powershell -ExecutionPolicy Bypass -File ./scripts/build-release.ps1 -Installer",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:check": "npm run test:coverage && node scripts/check-coverage.cjs",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
+    "format:write": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",

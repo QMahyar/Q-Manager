@@ -584,6 +584,10 @@ fn export_single_account(
 
     drop(conn); // Release lock
 
+    log::warn!(
+        "Account session export may include API credentials stored in session files. Handle exports securely."
+    );
+
     // Get session directory - try by user_id first (login flow), then by account_id (import flow)
     let sessions_dir = get_sessions_dir();
     let session_dir = if let Some(uid) = user_id {

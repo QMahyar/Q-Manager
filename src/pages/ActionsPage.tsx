@@ -31,7 +31,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { IconBolt } from "@tabler/icons-react";
 import { ActionPatternTable } from "@/components/actions/ActionPatternTable";
 import { ActionDefaultsDialog } from "@/components/actions/ActionDefaultsDialog";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 
 // ActionPattern type is now imported from @/lib/types
 
@@ -104,7 +104,7 @@ export default function ActionsPage() {
       resetActionForm();
       toast.success("Action created");
     },
-    onError: (e) => toast.error("Failed to create action", { description: getErrorMessage(e) }),
+    onError: (e) => toastError("Failed to create action", e),
   });
 
   const updateActionMutation = useMutation({
@@ -115,7 +115,7 @@ export default function ActionsPage() {
       setActionToEdit(null);
       toast.success("Action updated");
     },
-    onError: (e) => toast.error("Failed to update action", { description: getErrorMessage(e) }),
+    onError: (e) => toastError("Failed to update action", e),
   });
   const actions = actionsQuery.data ?? [];
   const isLoading = actionsQuery.isLoading;
@@ -186,7 +186,7 @@ export default function ActionsPage() {
       toast.success("Defaults saved");
       setDefaultsDialogOpen(false);
     } catch (e) {
-      toast.error("Failed to save defaults", { description: getErrorMessage(e) });
+      toastError("Failed to save defaults", e);
     }
   };
   
@@ -402,7 +402,7 @@ export default function ActionsPage() {
                     description: "JSON file saved successfully.",
                   });
                 } catch (e) {
-                  toast.error("Failed to export patterns", { description: getErrorMessage(e) });
+                  toastError("Failed to export patterns", e);
                 } finally {
                   setIsExporting(false);
                 }
@@ -435,7 +435,7 @@ export default function ActionsPage() {
                   queryClient.invalidateQueries({ queryKey: ["action-patterns"] });
                   await reloadAllPatterns();
                 } catch (e) {
-                  toast.error("Failed to import patterns", { description: getErrorMessage(e) });
+                  toastError("Failed to import patterns", e);
                 } finally {
                   setIsImporting(false);
                 }
@@ -455,7 +455,7 @@ export default function ActionsPage() {
                     description: "Running workers will now use the updated patterns.",
                   });
                 } catch (e) {
-                  toast.error("Failed to reload patterns", { description: getErrorMessage(e) });
+                  toastError("Failed to reload patterns", e);
                 } finally {
                   setIsReloading(false);
                 }

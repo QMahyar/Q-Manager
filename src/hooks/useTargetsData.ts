@@ -19,7 +19,7 @@ import {
   copyTargets,
 } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 
 export function useTargetsData() {
   const accountsQuery = useQuery({
@@ -36,8 +36,11 @@ export function useTargetsData() {
 }
 
 export function useTargetOverrides(accountId: number | null, actionId: number | null, accounts: Account[], actions: Action[]) {
+  const accountIds = useMemo(() => accounts.map((account) => account.id), [accounts]);
+  const actionIds = useMemo(() => actions.map((action) => action.id), [actions]);
+
   const actionOverridesQuery = useQuery({
-    queryKey: ["action-overrides", actionId],
+    queryKey: ["action-overrides", actionId, accountIds],
     queryFn: async () => {
       if (!actionId) return {};
       const entries = await Promise.all(
@@ -63,7 +66,7 @@ export function useTargetOverrides(accountId: number | null, actionId: number | 
   });
 
   const accountOverridesQuery = useQuery({
-    queryKey: ["account-overrides", accountId],
+    queryKey: ["account-overrides", accountId, actionIds],
     queryFn: async () => {
       if (!accountId) return {};
       const entries = await Promise.all(
@@ -117,7 +120,7 @@ export function useTargetConfig(accountId: number, action: Action) {
       queryClient.invalidateQueries({ queryKey: ["account-overrides"] });
     },
     onError: (error) => {
-      toast.error("Failed to save", { description: getErrorMessage(error) });
+      toastError("Failed to save", error);
     },
   });
 
@@ -133,7 +136,7 @@ export function useTargetConfig(accountId: number, action: Action) {
       return null;
     },
     onError: (error) => {
-      toast.error("Failed to update blacklist", { description: getErrorMessage(error) });
+      toastError("Failed to update blacklist", error);
     },
   });
 
@@ -149,7 +152,7 @@ export function useTargetConfig(accountId: number, action: Action) {
       return null;
     },
     onError: (error) => {
-      toast.error("Failed to update target pairs", { description: getErrorMessage(error) });
+      toastError("Failed to update target pairs", error);
     },
   });
 
@@ -198,7 +201,7 @@ export function useCopyTargets() {
       queryClient.invalidateQueries({ queryKey: ["action-overrides"] });
     },
     onError: (error) => {
-      toast.error("Failed to paste targets", { description: getErrorMessage(error) });
+      toastError("Failed to paste targets", error);
     },
   });
 

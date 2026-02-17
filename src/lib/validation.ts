@@ -152,7 +152,7 @@ export const VALIDATION_LIMITS = {
   MAX_DISPLAY_NAME_LENGTH: 200,
   MAX_PHONE_LENGTH: 20,
   MIN_DELAY_SECONDS: 0,
-  MAX_DELAY_SECONDS: 300,
+  MAX_DELAY_SECONDS: 3600,
   MIN_PRIORITY: -10000,
   MAX_PRIORITY: 10000,
   MAX_JOIN_ATTEMPTS: 100,
@@ -416,7 +416,7 @@ export function validateBotUserId(userId: number | string | null | undefined): V
     return { valid: false, error: "Bot User ID must be a number" };
   }
 
-  if (numericId <= 0) {
+  if (numericId < 0) {
     return { valid: false, error: "Bot User ID must be a positive number" };
   }
 
@@ -435,6 +435,10 @@ export function validateGroupId(groupId: number | string | null | undefined): Va
 
   if (isNaN(numericId)) {
     return { valid: false, error: "Group ID must be a number" };
+  }
+
+  if (numericId === 0) {
+    return { valid: false, error: "Group ID cannot be 0" };
   }
 
   // Group IDs can be negative (supergroups/channels) or positive

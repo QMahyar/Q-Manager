@@ -355,9 +355,15 @@ impl WorkerManager {
 
         if let Some(command_tx) = command_tx {
             if task_finished.unwrap_or(true) {
-                // Task already finished, just cleanup
-                let mut workers = self.workers.write().await;
-                workers.remove(&account_id);
+                // Task already finished, just cleanup and mark stopped
+                {
+                    let mut workers = self.workers.write().await;
+                    workers.remove(&account_id);
+                }
+                if let Ok(conn) = db::get_conn() {
+                    let _ = db::update_account_status(&conn, account_id, "stopped");
+                }
+                emit_account_status(account_id, "stopped", None);
                 return Ok(());
             }
 
@@ -401,6 +407,12 @@ impl WorkerManager {
                 workers.remove(&account_id);
             }
 
+            // Ensure stopped status is reflected when we stop directly
+            if let Ok(conn) = db::get_conn() {
+                let _ = db::update_account_status(&conn, account_id, "stopped");
+            }
+            emit_account_status(account_id, "stopped", None);
+
             Ok(())
         } else {
             // Account not running, just ensure status is stopped
@@ -409,6 +421,7 @@ impl WorkerManager {
                 db::update_account_status(&conn, account_id, "stopped")
                     .map_err(|e| e.to_string())?;
             }
+            emit_account_status(account_id, "stopped", None);
             Ok(())
         }
     }

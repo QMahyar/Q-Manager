@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ActionCreate } from "@/lib/types";
 import { listActions, createAction, deleteAction } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
-import { getErrorMessage } from "@/lib/error-utils";
+import { toastError } from "@/lib/toast-utils";
 
 export function useActionsData() {
   const queryClient = useQueryClient();
@@ -19,7 +19,7 @@ export function useActionsData() {
       toast.success("Action created");
     },
     onError: (error) => {
-      toast.error("Failed to create action", { description: getErrorMessage(error) });
+      toastError("Failed to create action", error);
     },
   });
 
@@ -30,7 +30,7 @@ export function useActionsData() {
       toast.success("Action deleted");
     },
     onError: (error) => {
-      toast.error("Failed to delete action", { description: getErrorMessage(error) });
+      toastError("Failed to delete action", error);
     },
   });
 

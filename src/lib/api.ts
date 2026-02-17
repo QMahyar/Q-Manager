@@ -38,9 +38,54 @@ const retryOptions = {
   },
 };
 
+async function invokeWithRetryCommand<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  return invokeWithRetrySafe(() => invoke<T>(cmd, args));
+}
+
 // Helper for invoking with retry for read operations
 async function invokeWithRetry<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  return withRetry(() => invoke<T>(cmd, args), retryOptions);
+  return invokeWithRetryCommand(cmd, args);
+}
+
+type ErrorShape = {
+  code?: string;
+  message?: string;
+  details?: string;
+};
+
+class ApiError extends Error {
+  code?: string;
+  details?: string;
+
+  constructor(message: string, options?: { code?: string; details?: string }) {
+    super(message);
+    this.name = "ApiError";
+    this.code = options?.code;
+    this.details = options?.details;
+  }
+}
+
+function normalizeError(error: unknown): ApiError {
+  const backendError = getBackendError(error);
+  if (backendError) {
+    const code = backendError.code;
+    const message = backendError.message ?? "Unknown error";
+    const details = backendError.details;
+    return new ApiError(message, { code, details });
+  }
+  if (error instanceof Error) {
+    return new ApiError(error.message);
+  }
+  return new ApiError(getErrorMessage(error));
+}
+
+async function invokeWithRetrySafe<T>(fn: () => Promise<T>): Promise<T> {
+  return withRetry(fn, {
+    ...retryOptions,
+    onRetry: (attempt: number, error: unknown) => {
+      apiLogger.warn(`API retry attempt ${attempt}`, { data: { error: normalizeError(error) } });
+    },
+  });
 }
 
 // Helper for invoking and surfacing backend errors
@@ -48,13 +93,7 @@ export async function invokeCommand<T>(cmd: string, args?: Record<string, unknow
   try {
     return await invoke<T>(cmd, args);
   } catch (error) {
-    const backendError = getBackendError(error);
-    if (backendError) {
-      const details = backendError.details ? `\n${backendError.details}` : "";
-      const code = backendError.code ? `[${backendError.code}] ` : "";
-      throw new Error(`${code}${backendError.message ?? "Unknown error"}${details}`);
-    }
-    throw new Error(getErrorMessage(error));
+    throw normalizeError(error);
   }
 }
 
@@ -486,17 +525,17 @@ export async function updateAction(payload: Action): Promise<Action> {
 
 /** Quick check if Telethon worker exists */
 export async function checkTelethonAvailable(): Promise<boolean> {
-  return invokeCommand(IPC_COMMANDS.checkTelethonAvailable);
+  return invokeWithRetryCommand(IPC_COMMANDS.checkTelethonAvailable);
 }
 
 /** Thorough check if Telethon worker can be used */
 export async function checkTelethon(): Promise<StartupCheckResult> {
-  return invokeCommand(IPC_COMMANDS.checkTelethon);
+  return invokeWithRetryCommand(IPC_COMMANDS.checkTelethon);
 }
 
 /** Pre-flight check before starting an account */
 export async function checkAccountStart(accountId: number): Promise<StartupCheckResult> {
-  return invokeCommand(IPC_COMMANDS.checkAccountStart, { accountId });
+  return invokeWithRetryCommand(IPC_COMMANDS.checkAccountStart, { accountId });
 }
 
 /** Pre-flight check before starting login flow */
@@ -504,14 +543,14 @@ export async function checkCanLogin(
   apiIdOverride?: number | null,
   apiHashOverride?: string | null
 ): Promise<StartupCheckResult> {
-  return invokeCommand(IPC_COMMANDS.checkCanLogin, { apiIdOverride, apiHashOverride });
+  return invokeWithRetryCommand(IPC_COMMANDS.checkCanLogin, { apiIdOverride, apiHashOverride });
 }
 
 /** System health check for app startup */
 export async function checkSystem(): Promise<StartupCheckResult> {
-  return invokeCommand(IPC_COMMANDS.checkSystem);
+  return invokeWithRetryCommand(IPC_COMMANDS.checkSystem);
 }
 
 export async function getDiagnosticsSnapshot(): Promise<DiagnosticsSnapshot> {
-  return invokeWithRetry(IPC_COMMANDS.diagnosticsSnapshot);
+  return invokeWithRetryCommand(IPC_COMMANDS.diagnosticsSnapshot);
 }
