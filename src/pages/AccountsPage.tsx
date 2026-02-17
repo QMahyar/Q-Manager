@@ -320,7 +320,6 @@ export default function AccountsPage() {
     } catch (error) {
       toastError("Failed to validate account", error);
     }
-    }
   };
 
   // Delete account handler
