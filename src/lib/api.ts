@@ -325,6 +325,7 @@ export interface ImportConflict {
 
 export interface ImportPreflight {
   conflicts: ImportConflict[];
+  candidates: ImportCandidate[];
 }
 
 export type ImportAction = "rename" | "replace" | "skip" | "cancel";

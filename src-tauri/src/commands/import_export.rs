@@ -6,6 +6,7 @@
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -18,6 +19,7 @@ use crate::db::{self, ActionPatternCreate};
 use crate::telethon;
 use crate::validation::{validate_pattern, validate_priority};
 use crate::workers::WORKER_MANAGER;
+use crate::import_utils::{expand_import_candidates, split_zip_source};
 
 /// Get the sessions directory path
 fn get_sessions_dir() -> PathBuf {
@@ -69,6 +71,7 @@ pub struct ImportConflict {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportPreflight {
     pub conflicts: Vec<ImportConflict>,
+    pub candidates: Vec<ImportCandidate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,10 +124,11 @@ pub struct PatternImportResult {
 pub fn account_import_preflight(
     candidates: Vec<ImportCandidate>,
 ) -> CommandResult<ImportPreflight> {
+    let expanded_candidates = expand_import_candidates(candidates)?;
     let conn = db::get_conn().map_err(error_response)?;
     let mut conflicts = Vec::new();
 
-    for candidate in candidates {
+    for candidate in &expanded_candidates {
         let mut stmt = conn
             .prepare(
                 "SELECT id, account_name, user_id, phone, last_seen_at \
@@ -136,8 +140,8 @@ pub fn account_import_preflight(
             .map_err(error_response)?;
         if let Some(row) = rows.next().map_err(error_response)? {
             conflicts.push(ImportConflict {
-                source_path: candidate.source_path,
-                account_name: candidate.account_name,
+                source_path: candidate.source_path.clone(),
+                account_name: candidate.account_name.clone(),
                 existing_account_id: row.get(0).map_err(error_response)?,
                 existing_account_name: row.get(1).map_err(error_response)?,
                 existing_user_id: row.get(2).map_err(error_response)?,
@@ -147,7 +151,10 @@ pub fn account_import_preflight(
         }
     }
 
-    Ok(ImportPreflight { conflicts })
+    Ok(ImportPreflight {
+        conflicts,
+        candidates: expanded_candidates,
+    })
 }
 
 /// Import Telethon sessions from a directory or ZIP file with duplicate resolution.
@@ -248,7 +255,13 @@ fn replace_existing_account(account_id: i64) -> CommandResult<()> {
 }
 
 fn import_single_account(source_path: &str, account_name: &str) -> CommandResult<ImportResult> {
-    let source = PathBuf::from(source_path);
+    let account_name = if account_name.trim().is_empty() {
+        "Imported Account"
+    } else {
+        account_name.trim()
+    };
+    let (source_path, zip_subdir) = split_zip_source(source_path);
+    let source = source_path;
 
     if !source.exists() {
         return Ok(ImportResult {
@@ -281,13 +294,35 @@ fn import_single_account(source_path: &str, account_name: &str) -> CommandResult
             // Extract ZIP
             let file = fs::File::open(&source).map_err(error_response)?;
             let mut archive = zip::ZipArchive::new(file).map_err(error_response)?;
+            let prefix = zip_subdir.as_deref();
 
             for i in 0..archive.len() {
                 let mut file = archive.by_index(i).map_err(error_response)?;
-                let outpath = match file.enclosed_name() {
-                    Some(path) => session_dir.join(path),
+                let path = match file.enclosed_name() {
+                    Some(path) => path.to_path_buf(),
                     None => continue,
                 };
+
+                if let Some(prefix) = prefix {
+                    if !path.starts_with(prefix) {
+                        continue;
+                    }
+                }
+
+                let relative_path = if let Some(prefix) = prefix {
+                    match path.strip_prefix(prefix) {
+                        Ok(stripped) => stripped.to_path_buf(),
+                        Err(_) => continue,
+                    }
+                } else {
+                    path
+                };
+
+                if relative_path.as_os_str().is_empty() {
+                    continue;
+                }
+
+                let outpath = session_dir.join(&relative_path);
 
                 if file.name().ends_with('/') {
                     fs::create_dir_all(&outpath).map_err(error_response)?;

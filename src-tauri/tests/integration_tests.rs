@@ -150,6 +150,19 @@ fn test_import_export_session_directory_naming() {
 }
 
 #[test]
+fn test_split_zip_source_helper() {
+    use q_manager_lib::import_utils::split_zip_source;
+
+    let (path, subdir) = split_zip_source("C:/sessions/accounts.zip::Player_session");
+    assert_eq!(path.to_string_lossy(), "C:/sessions/accounts.zip");
+    assert_eq!(subdir.unwrap().to_string_lossy(), "Player_session");
+
+    let (path, subdir) = split_zip_source("C:/sessions/accounts.zip");
+    assert_eq!(path.to_string_lossy(), "C:/sessions/accounts.zip");
+    assert!(subdir.is_none());
+}
+
+#[test]
 fn test_ban_warning_detection() {
     // Test ban warning pattern matching
     let text = "Warning: You have been reported for spam";

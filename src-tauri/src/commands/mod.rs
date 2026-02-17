@@ -4,7 +4,7 @@
 mod accounts;
 mod actions;
 mod group_slots;
-mod import_export;
+pub(crate) mod import_export;
 mod login;
 mod phases;
 mod settings;

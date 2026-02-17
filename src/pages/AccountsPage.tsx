@@ -89,6 +89,7 @@ export default function AccountsPage() {
   const [importApplyToAll, setImportApplyToAll] = useState(false);
   const [importDefaultAction, setImportDefaultAction] = useState<ImportAction>("rename");
   const [importResolutions, setImportResolutions] = useState<ImportResolution[]>([]);
+  const [importPendingResolutions, setImportPendingResolutions] = useState<ImportResolution[]>([]);
   
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [accountToExport, setAccountToExport] = useState<Account | null>(null);
@@ -377,6 +378,7 @@ export default function AccountsPage() {
     setImportApplyToAll(false);
     setImportDefaultAction("rename");
     setImportResolutions([]);
+    setImportPendingResolutions([]);
   };
 
   const resolveImport = async (resolutions: ImportResolution[]) => {
@@ -425,22 +427,24 @@ export default function AccountsPage() {
       ];
       const preflight = await importAccountPreflight(candidates);
 
+      const resolvedCandidates = preflight.candidates.length > 0 ? preflight.candidates : candidates;
+      const defaultResolutions = resolvedCandidates.map((candidate) => ({
+        source_path: candidate.source_path,
+        account_name: candidate.account_name,
+        action: "rename" as const,
+      }));
+
       if (preflight.conflicts.length === 0) {
-        await startImportWithResolutions([
-          {
-            source_path: importPath,
-            account_name: trimmedName,
-            action: "rename",
-          },
-        ]);
+        await startImportWithResolutions(defaultResolutions);
         return;
       }
 
       setImportConflicts(preflight.conflicts);
       setImportConflictIndex(0);
       setImportConflictDialogOpen(true);
-      setImportResolutionName(buildDefaultRename(trimmedName, 1));
+      setImportResolutionName(buildDefaultRename(resolvedCandidates[0]?.account_name ?? trimmedName, 1));
       setImportResolutions([]);
+      setImportPendingResolutions(defaultResolutions);
       setImportApplyToAll(false);
     } catch (error) {
       toastError("Import failed", error);
@@ -464,30 +468,54 @@ export default function AccountsPage() {
     const nextResolutions = [...importResolutions, resolution];
     const nextIndex = importConflictIndex + 1;
 
-    if (importApplyToAll) {
-      const remaining = importConflicts.slice(nextIndex).map((item, idx) => {
-        const useAction = importDefaultAction;
-        const defaultName = buildDefaultRename(item.account_name, nextIndex + idx + 1);
+    const applyResolutionToCandidates = (overrideAction?: ImportAction, overrideName?: string) => {
+      return importPendingResolutions.map((candidate) => {
+        if (candidate.source_path !== conflict.source_path) {
+          return candidate;
+        }
+        const candidateAction = overrideAction ?? action;
         return {
-          source_path: item.source_path,
-          account_name: item.account_name,
+          ...candidate,
+          action: candidateAction,
+          existing_account_id: candidateAction === "replace" ? conflict.existing_account_id : candidate.existing_account_id,
+          new_name:
+            candidateAction === "rename"
+              ? (overrideName ?? importResolutionName.trim())
+              : undefined,
+        };
+      });
+    };
+
+    if (importApplyToAll) {
+      const updatedPending = importPendingResolutions.map((candidate) => {
+        const match = importConflicts.find((item) => item.source_path === candidate.source_path);
+        if (!match) {
+          return candidate;
+        }
+        const useAction = importDefaultAction;
+        const defaultName = buildDefaultRename(match.account_name, 1);
+        return {
+          ...candidate,
           action: useAction,
-          existing_account_id: item.existing_account_id,
+          existing_account_id: useAction === "replace" ? match.existing_account_id : candidate.existing_account_id,
           new_name: useAction === "rename" ? defaultName : undefined,
         };
       });
       setImportConflictDialogOpen(false);
-      await startImportWithResolutions([...nextResolutions, ...remaining]);
+      await startImportWithResolutions(updatedPending);
       return;
     }
 
+    const updatedPending = applyResolutionToCandidates();
+
     if (nextIndex >= importConflicts.length) {
       setImportConflictDialogOpen(false);
-      await startImportWithResolutions(nextResolutions);
+      await startImportWithResolutions(updatedPending);
       return;
     }
 
     setImportResolutions(nextResolutions);
+    setImportPendingResolutions(updatedPending);
     setImportConflictIndex(nextIndex);
     setImportResolutionName(buildDefaultRename(importConflicts[nextIndex].account_name, nextIndex + 1));
   };
