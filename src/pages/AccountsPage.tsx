@@ -395,7 +395,6 @@ export default function AccountsPage() {
     if (failed.length > 0) {
       toastError("Some imports failed", failed.map((item) => item.message).join("; "));
     }
-    }
   };
 
   const startImportWithResolutions = async (resolutions: ImportResolution[]) => {
