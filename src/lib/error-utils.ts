@@ -12,6 +12,18 @@ export type BackendErrorResponse = {
   details?: string;
 };
 
+export class ApiError extends Error {
+  code?: string;
+  details?: string;
+
+  constructor(message: string, options?: { code?: string; details?: string }) {
+    super(message);
+    this.name = "ApiError";
+    this.code = options?.code;
+    this.details = options?.details;
+  }
+}
+
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -30,11 +42,25 @@ export function getErrorMessage(error: unknown): string {
 
 export function getBackendError(error: unknown): BackendErrorResponse | null {
   if (!error || typeof error !== "object") return null;
+  // Native JS Error instances are not backend responses
+  if (error instanceof Error) return null;
   const candidate = error as BackendErrorResponse;
   if (typeof candidate.message === "string" || typeof candidate.code === "string") {
     return candidate;
   }
   return null;
+}
+
+export function normalizeError(error: unknown): ApiError {
+  const backendError = getBackendError(error);
+  if (backendError?.message) {
+    return new ApiError(backendError.message, {
+      code: backendError.code,
+      details: backendError.details,
+    });
+  }
+
+  return new ApiError(getErrorMessage(error));
 }
 
 /**

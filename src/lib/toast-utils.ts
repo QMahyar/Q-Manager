@@ -1,13 +1,16 @@
 import { toast } from "@/components/ui/sonner";
-import { getBackendError, getErrorMessage } from "@/lib/error-utils";
+import { normalizeError } from "@/lib/error-utils";
 
 export function toastError(title: string, error: unknown) {
-  const backendError = getBackendError(error);
-  const description = backendError
-    ? `${backendError.code ? `[${backendError.code}] ` : ""}${backendError.message ?? "Unknown error"}${
-        backendError.details ? `\n${backendError.details}` : ""
-      }`
-    : getErrorMessage(error);
+  if (!error) {
+    toast.error(title);
+    return;
+  }
 
-  toast.error(title, { description });
+  const normalized = normalizeError(error);
+  const description = `${normalized.code ? `[${normalized.code}] ` : ""}${normalized.message}${
+    normalized.details ? `\n${normalized.details}` : ""
+  }`;
+
+  toast.error(title, { description: description || "An unexpected error occurred" });
 }

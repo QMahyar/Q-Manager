@@ -18,17 +18,17 @@ import {
   removeTargetPair,
   copyTargets,
 } from "@/lib/api";
-import { toast } from "@/components/ui/sonner";
+import { queryKeys } from "@/lib/query-keys";
 import { toastError } from "@/lib/toast-utils";
 
 export function useTargetsData() {
   const accountsQuery = useQuery({
-    queryKey: ["accounts"],
+    queryKey: queryKeys.accounts(),
     queryFn: listAccounts,
   });
 
   const actionsQuery = useQuery({
-    queryKey: ["actions"],
+    queryKey: queryKeys.actions(),
     queryFn: listActions,
   });
 
@@ -40,7 +40,7 @@ export function useTargetOverrides(accountId: number | null, actionId: number | 
   const actionIds = useMemo(() => actions.map((action) => action.id), [actions]);
 
   const actionOverridesQuery = useQuery({
-    queryKey: ["action-overrides", actionId, accountIds],
+    queryKey: queryKeys.actionOverrides(actionId ?? 0, accountIds.join("-")),
     queryFn: async () => {
       if (!actionId) return {};
       const entries = await Promise.all(
@@ -66,7 +66,7 @@ export function useTargetOverrides(accountId: number | null, actionId: number | 
   });
 
   const accountOverridesQuery = useQuery({
-    queryKey: ["account-overrides", accountId, actionIds],
+    queryKey: queryKeys.accountOverrides(accountId ?? 0, actionIds.join("-")),
     queryFn: async () => {
       if (!accountId) return {};
       const entries = await Promise.all(
@@ -114,10 +114,10 @@ export function useTargetConfig(accountId: number, action: Action) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["targetOverride"] });
-      queryClient.invalidateQueries({ queryKey: ["delayOverride"] });
-      queryClient.invalidateQueries({ queryKey: ["action-overrides"] });
-      queryClient.invalidateQueries({ queryKey: ["account-overrides"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.targetOverride(accountId, action.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.delayOverride(accountId, action.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.actionOverridesRoot() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accountOverridesRoot() });
     },
     onError: (error) => {
       toastError("Failed to save", error);
@@ -129,11 +129,14 @@ export function useTargetConfig(accountId: number, action: Action) {
       if (payload.entry) {
         return addBlacklistEntry(accountId, action.id, payload.entry);
       }
-      if (payload.removeId) {
+      if (payload.removeId !== undefined) {
         await removeBlacklistEntry(payload.removeId);
         return null;
       }
       return null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.blacklist(accountId, action.id) });
     },
     onError: (error) => {
       toastError("Failed to update blacklist", error);
@@ -145,11 +148,14 @@ export function useTargetConfig(accountId: number, action: Action) {
       if (payload.pair) {
         return addTargetPair(accountId, action.id, payload.pair.a, payload.pair.b);
       }
-      if (payload.removeId) {
+      if (payload.removeId !== undefined) {
         await removeTargetPair(payload.removeId);
         return null;
       }
       return null;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.pairs(accountId, action.id) });
     },
     onError: (error) => {
       toastError("Failed to update target pairs", error);
@@ -161,22 +167,22 @@ export function useTargetConfig(accountId: number, action: Action) {
 
 export function useTargetLists(accountId: number, action: Action) {
   const overridesQuery = useQuery({
-    queryKey: ["targetOverride", accountId, action.id],
+    queryKey: queryKeys.targetOverride(accountId, action.id),
     queryFn: () => getTargetOverride(accountId, action.id),
   });
 
   const delayQuery = useQuery({
-    queryKey: ["delayOverride", accountId, action.id],
+    queryKey: queryKeys.delayOverride(accountId, action.id),
     queryFn: () => getDelayOverride(accountId, action.id),
   });
 
   const blacklistQuery = useQuery({
-    queryKey: ["blacklist", accountId, action.id],
+    queryKey: queryKeys.blacklist(accountId, action.id),
     queryFn: () => listBlacklist(accountId, action.id),
   });
 
   const pairsQuery = useQuery({
-    queryKey: ["pairs", accountId, action.id],
+    queryKey: queryKeys.pairs(accountId, action.id),
     queryFn: () => listTargetPairs(accountId, action.id),
     enabled: action.is_two_step,
   });
@@ -195,10 +201,12 @@ export function useCopyTargets() {
     mutationFn: ({ fromId, toIds, actionIds }: { fromId: number; toIds: number[]; actionIds: number[] }) =>
       copyTargets(fromId, toIds, actionIds),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["targetOverride"] });
-      queryClient.invalidateQueries({ queryKey: ["delayOverride"] });
-      queryClient.invalidateQueries({ queryKey: ["account-overrides"] });
-      queryClient.invalidateQueries({ queryKey: ["action-overrides"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.targetOverrideRoot() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.delayOverrideRoot() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.blacklistRoot() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pairsRoot() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accountOverridesRoot() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.actionOverridesRoot() });
     },
     onError: (error) => {
       toastError("Failed to paste targets", error);
@@ -208,6 +216,9 @@ export function useCopyTargets() {
   return mutation;
 }
 
+// Note: useTargetDefaults was previously returning a trivially memoized
+// plain object with no data-fetching value. Callers should use the
+// accountId/actionId values directly instead.
 export function useTargetDefaults(accountId: number, actionId: number) {
   return useMemo(() => ({ accountId, actionId }), [accountId, actionId]);
 }

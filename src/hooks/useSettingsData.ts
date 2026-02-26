@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BanWarningPattern, SettingsUpdate } from "@/lib/types";
+import type { BanWarningPattern } from "@/lib/types";
 import { getSettings, updateSettings, listActions, getDelayDefault, setDelayDefault, getDiagnosticsSnapshot } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { toast } from "@/components/ui/sonner";
 import { toastError } from "@/lib/toast-utils";
 
@@ -9,19 +9,19 @@ export function useSettingsData() {
   const queryClient = useQueryClient();
 
   const settingsQuery = useQuery({
-    queryKey: ["settings"],
+    queryKey: queryKeys.settings(),
     queryFn: getSettings,
   });
 
   const actionsQuery = useQuery({
-    queryKey: ["actions"],
+    queryKey: queryKeys.actions(),
     queryFn: listActions,
   });
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings() });
       toast.success("Settings saved", {
         description: "Your settings have been updated.",
       });
@@ -35,35 +35,42 @@ export function useSettingsData() {
 }
 
 export function useDelayDefaults(actions: { id: number }[]) {
-  const [actionDelays, setActionDelays] = useState<Record<number, { min: number; max: number }>>({});
+  // Stable sorted key so query doesn't refetch when action order changes
+  const stableKey = [...actions].map((a) => a.id).sort((a, b) => a - b).join(",");
 
-  useEffect(() => {
-    const loadDelayDefaults = async () => {
+  const query = useQuery({
+    queryKey: queryKeys.delayDefaults(stableKey),
+    queryFn: async () => {
+      if (actions.length === 0) return {} as Record<number, { min: number; max: number }>;
+      const results = await Promise.all(
+        actions.map(async (action) => {
+          try {
+            const delayDefault = await getDelayDefault(action.id);
+            return {
+              id: action.id,
+              min: delayDefault?.min_seconds ?? 2,
+              max: delayDefault?.max_seconds ?? 8,
+            };
+          } catch {
+            return { id: action.id, min: 2, max: 8 };
+          }
+        })
+      );
       const delays: Record<number, { min: number; max: number }> = {};
-      for (const action of actions) {
-        try {
-          const delayDefault = await getDelayDefault(action.id);
-          delays[action.id] = {
-            min: delayDefault?.min_seconds ?? 2,
-            max: delayDefault?.max_seconds ?? 8,
-          };
-        } catch {
-          delays[action.id] = { min: 2, max: 8 };
-        }
+      for (const r of results) {
+        delays[r.id] = { min: r.min, max: r.max };
       }
-      setActionDelays(delays);
-    };
-    if (actions.length > 0) {
-      loadDelayDefaults();
-    }
-  }, [actions]);
+      return delays;
+    },
+    enabled: actions.length > 0,
+  });
 
-  return { actionDelays, setActionDelays };
+  return { actionDelays: query.data ?? {}, isLoading: query.isLoading };
 }
 
 export function useDiagnosticsSnapshot() {
   const diagnosticsQuery = useQuery({
-    queryKey: ["diagnostics"],
+    queryKey: queryKeys.diagnostics(),
     queryFn: getDiagnosticsSnapshot,
   });
 
@@ -76,7 +83,7 @@ export function useDelayDefaultMutation() {
     mutationFn: ({ actionId, min, max }: { actionId: number; min: number; max: number }) =>
       setDelayDefault(actionId, min, max),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["delay-defaults"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.delayDefaultsRoot() });
     },
     onError: (error) => {
       toastError("Failed to update delay defaults", error);
@@ -87,12 +94,10 @@ export function useDelayDefaultMutation() {
 
 export function parseBanPatterns(json: string): BanWarningPattern[] {
   try {
-    return JSON.parse(json) as BanWarningPattern[];
+    const parsed: unknown = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as BanWarningPattern[];
   } catch {
     return [];
   }
-}
-
-export function buildSettingsPayload(payload: SettingsUpdate) {
-  return payload;
 }

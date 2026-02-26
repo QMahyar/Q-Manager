@@ -12,20 +12,21 @@ import {
   stopSelectedAccounts,
 } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
+import { queryKeys } from "@/lib/query-keys";
 import { toastError } from "@/lib/toast-utils";
 
 export function useAccountsData() {
   const queryClient = useQueryClient();
 
   const accountsQuery = useQuery({
-    queryKey: ["accounts"],
+    queryKey: queryKeys.accounts(),
     queryFn: listAccounts,
   });
 
   const createMutation = useMutation({
     mutationFn: createAccount,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Account created");
     },
     onError: (error) => {
@@ -36,7 +37,7 @@ export function useAccountsData() {
   const deleteMutation = useMutation({
     mutationFn: deleteAccount,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Account deleted");
     },
     onError: (error) => {
@@ -47,7 +48,7 @@ export function useAccountsData() {
   const startMutation = useMutation({
     mutationFn: startAccount,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Account started");
     },
     onError: (error) => {
@@ -58,7 +59,7 @@ export function useAccountsData() {
   const stopMutation = useMutation({
     mutationFn: stopAccount,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Account stopped");
     },
     onError: (error) => {
@@ -69,7 +70,7 @@ export function useAccountsData() {
   const startAllMutation = useMutation({
     mutationFn: startAllAccounts,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Started all accounts");
     },
     onError: (error) => {
@@ -80,7 +81,7 @@ export function useAccountsData() {
   const stopAllMutation = useMutation({
     mutationFn: stopAllAccounts,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Stopped all accounts");
     },
     onError: (error) => {
@@ -91,7 +92,7 @@ export function useAccountsData() {
   const startSelectedMutation = useMutation({
     mutationFn: startSelectedAccounts,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Started selected accounts");
     },
     onError: (error) => {
@@ -102,7 +103,7 @@ export function useAccountsData() {
   const stopSelectedMutation = useMutation({
     mutationFn: stopSelectedAccounts,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       toast.success("Stopped selected accounts");
     },
     onError: (error) => {

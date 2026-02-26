@@ -4,8 +4,10 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { startAccount, stopAccount, startAllAccounts, stopAllAccounts } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { toastError } from "@/lib/toast-utils";
 import { eventLogger, uiLogger } from "@/lib/logger";
+import { IPC_EVENTS } from "@/lib/ipc";
 
 // Debounce configuration
 const STATUS_DEBOUNCE_MS = 150; // Debounce status updates to prevent UI thrashing
@@ -14,7 +16,7 @@ const QUERY_INVALIDATE_DEBOUNCE_MS = 750; // Debounce query invalidation for bul
 // Event types matching the Rust backend
 export interface AccountStatusEvent {
   account_id: number;
-  status: "stopped" | "starting" | "running" | "stopping" | "error";
+  status: "stopped" | "starting" | "running" | "stopping" | "error" | "reconnecting";
   message: string | null;
 }
 
@@ -88,7 +90,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
     const setupListeners = async () => {
       // Account status changes - with debouncing
       const unlistenStatus = await listen<AccountStatusEvent>(
-        "account-status",
+        IPC_EVENTS.accountStatus,
         (event) => {
           // Store the latest status for each account
           pendingStatusUpdates.current.set(event.payload.account_id, event.payload);
@@ -115,7 +117,17 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
             clearTimeout(queryInvalidateRef.current);
           }
           queryInvalidateRef.current = setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ["accounts"] });
+            queryClient.setQueryData(queryKeys.accounts(), (current) => {
+              if (!current) return current;
+              return current.map((account) => {
+                const update = pendingStatusUpdates.current.get(account.id);
+                if (!update) return account;
+                return {
+                  ...account,
+                  status: update.status,
+                };
+              });
+            });
           }, QUERY_INVALIDATE_DEBOUNCE_MS);
         }
       );
@@ -123,7 +135,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
 
       // Phase detected
       const unlistenPhase = await listen<PhaseDetectedEvent>(
-        "phase-detected",
+        IPC_EVENTS.phaseDetected,
         (event) => {
           eventLogger.info("Phase detected", {
             source: "useAccountEvents",
@@ -137,7 +149,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
 
       // Action detected
       const unlistenAction = await listen<ActionDetectedEvent>(
-        "action-detected",
+        IPC_EVENTS.actionDetected,
         (event) => {
           eventLogger.info("Action detected", {
             source: "useAccountEvents",
@@ -151,7 +163,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
 
       // Join attempt
       const unlistenJoin = await listen<JoinAttemptEvent>(
-        "join-attempt",
+        IPC_EVENTS.joinAttempt,
         (event) => {
           eventLogger.info("Join attempt", {
             source: "useAccountEvents",
@@ -164,7 +176,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       unlisteners.push(unlistenJoin);
 
       // Log messages
-      const unlistenLog = await listen<LogEvent>("account-log", (event) => {
+      const unlistenLog = await listen<LogEvent>(IPC_EVENTS.accountLog, (event) => {
         eventLogger.info("Account log", {
           source: "useAccountEvents",
           accountId: event.payload.account_id,
@@ -175,7 +187,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       unlisteners.push(unlistenLog);
 
       // Regex validation errors
-      const unlistenRegex = await listen<RegexValidationEvent>("regex-validation-error", (event) => {
+      const unlistenRegex = await listen<RegexValidationEvent>(IPC_EVENTS.regexValidationError, (event) => {
         uiLogger.warn("Regex validation error", {
           source: "useAccountEvents",
           data: event.payload as unknown as Record<string, unknown>,
@@ -188,7 +200,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       unlisteners.push(unlistenRegex);
 
       // Tray menu events - Start specific account
-      const unlistenTrayStart = await listen<number>("tray-start-account", async (event) => {
+      const unlistenTrayStart = await listen<number>(IPC_EVENTS.trayStartAccount, async (event) => {
         eventLogger.info("Tray start account", {
           source: "useAccountEvents",
           accountId: event.payload,
@@ -206,7 +218,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       unlisteners.push(unlistenTrayStart);
 
       // Tray menu events - Stop specific account
-      const unlistenTrayStop = await listen<number>("tray-stop-account", async (event) => {
+      const unlistenTrayStop = await listen<number>(IPC_EVENTS.trayStopAccount, async (event) => {
         eventLogger.info("Tray stop account", {
           source: "useAccountEvents",
           accountId: event.payload,
@@ -224,7 +236,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       unlisteners.push(unlistenTrayStop);
 
       // Tray menu events - Start all accounts
-      const unlistenTrayStartAll = await listen("tray-start-all", async () => {
+      const unlistenTrayStartAll = await listen(IPC_EVENTS.trayStartAll, async () => {
         eventLogger.info("Tray start all accounts", { source: "useAccountEvents" });
         try {
           await startAllAccounts();
@@ -238,7 +250,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       unlisteners.push(unlistenTrayStartAll);
 
       // Tray menu events - Stop all accounts
-      const unlistenTrayStopAll = await listen("tray-stop-all", async () => {
+      const unlistenTrayStopAll = await listen(IPC_EVENTS.trayStopAll, async () => {
         eventLogger.info("Tray stop all accounts", { source: "useAccountEvents" });
         try {
           await stopAllAccounts();
@@ -252,10 +264,22 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       unlisteners.push(unlistenTrayStopAll);
     };
 
-    setupListeners();
+    let isCancelled = false;
+
+    setupListeners()
+      .then(() => {
+        // If cleanup ran before listeners were set up, unlisten immediately
+        if (isCancelled) {
+          unlisteners.forEach((unlisten) => unlisten());
+        }
+      })
+      .catch((err) => {
+        console.error("[useAccountEvents] Failed to set up event listeners:", err);
+      });
 
     // Cleanup on unmount
     return () => {
+      isCancelled = true;
       // Clear any pending debounced calls
       if (statusDebounceRef.current) {
         clearTimeout(statusDebounceRef.current);

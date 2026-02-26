@@ -1,82 +1,114 @@
 // Tauri API wrapper functions
 import { invoke } from "@tauri-apps/api/core";
-import { withRetry, isNetworkError } from "./retry";
+import { withRetry } from "./retry";
 import { apiLogger } from "./logger";
-import { getErrorMessage, getBackendError } from "./error-utils";
+import { getBackendError, normalizeError } from "./error-utils";
+import { compareStringsNatural } from "./utils";
 import { IPC_COMMANDS } from "./ipc";
 import type {
   Settings,
   SettingsUpdate,
   Account,
   AccountCreate,
+  AccountUpdate,
+  SessionRefreshResult,
   Phase,
   PhasePattern,
   PhasePatternCreate,
+  PhasePatternUpdate,
+  PhasePriorityUpdate,
   Action,
   ActionCreate,
+  ActionPattern,
+  ActionPatternCreate,
+  ActionPatternUpdate,
   TargetDefault,
   TargetOverride,
   TargetBlacklist,
   DelayDefault,
   DelayOverride,
   TargetPair,
+  GroupSlot,
+  GroupSlotUpdate,
   DiagnosticsSnapshot,
   StartupCheckResult,
   BulkStartReport,
   ExportResult,
   ExportBatchResult,
   ExportFormat,
+  ImportResult,
+  ImportCandidate,
+  ImportConflict,
+  ImportPreflight,
+  ImportAction,
+  ImportResolution,
+  PatternExport,
+  PatternPhaseRow,
+  PatternActionRow,
+  PatternImportResult,
+  TelegramGroup,
 } from "./types";
+
+export type {
+  AccountUpdate,
+  ExportFormat,
+  ImportResult,
+  ImportCandidate,
+  ImportConflict,
+  ImportPreflight,
+  ImportAction,
+  ImportResolution,
+  PatternExport,
+  PatternPhaseRow,
+  PatternActionRow,
+  PatternImportResult,
+  GroupSlot,
+  GroupSlotUpdate,
+  ActionPattern,
+  ActionPatternCreate,
+  ActionPatternUpdate,
+  PhasePatternUpdate,
+  PhasePriorityUpdate,
+  TelegramGroup,
+};
+
+// Check if a Tauri IPC error is worth retrying.
+// Tauri errors can be plain strings or objects, not always Error instances.
+function isTauriRetryableError(error: unknown): boolean {
+  // Never retry deliberate backend errors (validation, not found, etc.)
+  const backendError = getBackendError(error);
+  if (backendError) return false;
+  // Retry on transient errors: Error instances with network-like messages
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return (
+      msg.includes("network") ||
+      msg.includes("connection") ||
+      msg.includes("timeout") ||
+      msg.includes("unavailable")
+    );
+  }
+  // For string errors (raw Tauri IPC), retry on timeout/connection hints
+  if (typeof error === "string") {
+    const msg = error.toLowerCase();
+    return msg.includes("timeout") || msg.includes("connection");
+  }
+  return false;
+}
 
 // Retry options for critical operations
 const retryOptions = {
   maxAttempts: 3,
   initialDelay: 300,
-  isRetryable: isNetworkError,
+  isRetryable: isTauriRetryableError,
   onRetry: (attempt: number, error: unknown) => {
     apiLogger.warn(`API retry attempt ${attempt}`, { data: { error } });
   },
 };
 
-async function invokeWithRetryCommand<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  return invokeWithRetrySafe(() => invoke<T>(cmd, args));
-}
-
-// Helper for invoking with retry for read operations
+// Helper for invoking with retry (for read operations and startup checks)
 async function invokeWithRetry<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  return invokeWithRetryCommand(cmd, args);
-}
-
-type ErrorShape = {
-  code?: string;
-  message?: string;
-  details?: string;
-};
-
-class ApiError extends Error {
-  code?: string;
-  details?: string;
-
-  constructor(message: string, options?: { code?: string; details?: string }) {
-    super(message);
-    this.name = "ApiError";
-    this.code = options?.code;
-    this.details = options?.details;
-  }
-}
-
-function normalizeError(error: unknown): ApiError {
-  const backendError = getBackendError(error);
-  if (backendError) {
-    const code = backendError.code;
-    const message = backendError.message ?? "Unknown error";
-    const details = backendError.details;
-    return new ApiError(message, { code, details });
-  }
-  if (error instanceof Error) {
-    return new ApiError(error.message);
-  }
-  return new ApiError(getErrorMessage(error));
+  return invokeWithRetrySafe(() => invoke<T>(cmd, args));
 }
 
 async function invokeWithRetrySafe<T>(fn: () => Promise<T>): Promise<T> {
@@ -114,7 +146,8 @@ export async function updateSettings(payload: SettingsUpdate): Promise<Settings>
 // ============================================================================
 
 export async function listAccounts(): Promise<Account[]> {
-  return invokeWithRetry(IPC_COMMANDS.accountsList);
+  const accounts = await invokeWithRetry<Account[]>(IPC_COMMANDS.accountsList);
+  return [...accounts].sort((a, b) => compareStringsNatural(a.account_name, b.account_name));
 }
 
 export async function createAccount(payload: AccountCreate): Promise<Account> {
@@ -169,25 +202,12 @@ export async function deletePhasePattern(patternId: number): Promise<void> {
   return invokeCommand(IPC_COMMANDS.phasePatternDelete, { patternId });
 }
 
-export interface PhasePatternUpdate {
-  id: number;
-  pattern: string;
-  is_regex: boolean;
-  enabled: boolean;
-  priority: number;
-}
-
 export async function updatePhasePattern(payload: PhasePatternUpdate): Promise<PhasePattern> {
   return invokeCommand(IPC_COMMANDS.phasePatternUpdate, { payload });
 }
 
-export interface PhasePriorityUpdate {
-  phaseId: number;
-  priority: number;
-}
-
 export async function updatePhasePriority(payload: PhasePriorityUpdate): Promise<Phase> {
-  return invokeCommand(IPC_COMMANDS.phaseUpdatePriority, { ...payload });
+  return invokeCommand(IPC_COMMANDS.phaseUpdatePriority, { payload });
 }
 
 export async function reloadAllPatterns(): Promise<void> {
@@ -301,75 +321,6 @@ export async function copyTargets(fromAccountId: number, toAccountIds: number[],
 // Import/Export
 // ============================================================================
 
-export interface ImportResult {
-  success: boolean;
-  account_id: number | null;
-  account_name: string;
-  message: string;
-}
-
-export interface ImportCandidate {
-  source_path: string;
-  account_name: string;
-}
-
-export interface ImportConflict {
-  source_path: string;
-  account_name: string;
-  existing_account_id: number;
-  existing_account_name: string;
-  existing_user_id: number | null;
-  existing_phone: string | null;
-  existing_last_seen_at: string | null;
-}
-
-export interface ImportPreflight {
-  conflicts: ImportConflict[];
-  candidates: ImportCandidate[];
-}
-
-export type ImportAction = "rename" | "replace" | "skip" | "cancel";
-
-export interface ImportResolution {
-  source_path: string;
-  account_name: string;
-  action: ImportAction;
-  new_name?: string | null;
-  existing_account_id?: number | null;
-}
-
-export interface PatternExport {
-  version: number;
-  phase_patterns: PatternPhaseRow[];
-  action_patterns: PatternActionRow[];
-}
-
-export interface PatternPhaseRow {
-  phase_id?: number | null;
-  phase_name?: string | null;
-  pattern: string;
-  is_regex: boolean;
-  enabled: boolean;
-  priority: number;
-}
-
-export interface PatternActionRow {
-  action_id?: number | null;
-  action_name?: string | null;
-  step: number;
-  pattern: string;
-  is_regex: boolean;
-  enabled: boolean;
-  priority: number;
-}
-
-export interface PatternImportResult {
-  imported: number;
-  updated: number;
-  skipped: number;
-  skipped_items: string[];
-}
-
 export async function importAccountPreflight(candidates: ImportCandidate[]): Promise<ImportPreflight> {
   return invokeCommand(IPC_COMMANDS.accountImportPreflight, { candidates });
 }
@@ -423,7 +374,17 @@ export async function checkAccountNameExists(name: string): Promise<boolean> {
   return invokeCommand(IPC_COMMANDS.accountNameExists, { name });
 }
 
-export async function updateAccount(accountId: number, payload: Partial<Account>): Promise<Account> {
+/**
+ * Refresh an account's phone, user_id and telegram_name by querying the live Telethon session.
+ * Useful after importing accounts where session validation was skipped.
+ */
+export async function refreshAccountSession(accountId: number): Promise<SessionRefreshResult> {
+  return invokeCommand(IPC_COMMANDS.accountRefreshSession, { accountId });
+}
+
+export type { SessionRefreshResult };
+
+export async function updateAccount(accountId: number, payload: AccountUpdate): Promise<Account> {
   // The Rust command expects a flat AccountUpdate struct with 'id' inside payload
   return invokeCommand(IPC_COMMANDS.accountUpdate, { payload: { id: accountId, ...payload } });
 }
@@ -431,23 +392,6 @@ export async function updateAccount(accountId: number, payload: Partial<Account>
 // ============================================================================
 // Group Slots
 // ============================================================================
-
-export interface GroupSlot {
-  id: number;
-  account_id: number;
-  slot: number;
-  enabled: boolean;
-  group_id: number | null;
-  group_title: string | null;
-  moderator_kind: 'main' | 'beta';
-}
-
-export interface GroupSlotUpdate {
-  enabled?: boolean;
-  group_id?: number | null;
-  group_title?: string | null;
-  moderator_kind?: 'main' | 'beta';
-}
 
 export async function getGroupSlots(accountId: number): Promise<GroupSlot[]> {
   return invokeWithRetry(IPC_COMMANDS.groupSlotsGet, { accountId });
@@ -468,11 +412,6 @@ export async function initGroupSlots(accountId: number): Promise<void> {
   return invokeCommand(IPC_COMMANDS.groupSlotsInit, { accountId });
 }
 
-export interface TelegramGroup {
-  id: number;
-  title: string;
-}
-
 export async function fetchAccountGroups(accountId: number): Promise<TelegramGroup[]> {
   return invokeCommand(IPC_COMMANDS.accountFetchGroups, { accountId });
 }
@@ -480,25 +419,6 @@ export async function fetchAccountGroups(accountId: number): Promise<TelegramGro
 // ============================================================================
 // Action Patterns (additional)
 // ============================================================================
-
-export interface ActionPattern {
-  id: number;
-  action_id: number;
-  pattern: string;
-  is_regex: boolean;
-  enabled: boolean;
-  priority: number;
-  step: number;
-}
-
-export interface ActionPatternCreate {
-  action_id: number;
-  pattern: string;
-  is_regex: boolean;
-  enabled: boolean;
-  priority: number;
-  step: number;
-}
 
 export async function listActionPatterns(actionId: number): Promise<ActionPattern[]> {
   return invokeWithRetry(IPC_COMMANDS.actionPatternsList, { actionId });
@@ -512,7 +432,7 @@ export async function deleteActionPattern(patternId: number): Promise<void> {
   return invokeCommand(IPC_COMMANDS.actionPatternDelete, { patternId });
 }
 
-export async function updateActionPattern(payload: ActionPattern): Promise<ActionPattern> {
+export async function updateActionPattern(payload: ActionPatternUpdate): Promise<ActionPattern> {
   return invokeCommand(IPC_COMMANDS.actionPatternUpdate, { payload });
 }
 
@@ -526,17 +446,17 @@ export async function updateAction(payload: Action): Promise<Action> {
 
 /** Quick check if Telethon worker exists */
 export async function checkTelethonAvailable(): Promise<boolean> {
-  return invokeWithRetryCommand(IPC_COMMANDS.checkTelethonAvailable);
+  return invokeWithRetry(IPC_COMMANDS.checkTelethonAvailable);
 }
 
 /** Thorough check if Telethon worker can be used */
 export async function checkTelethon(): Promise<StartupCheckResult> {
-  return invokeWithRetryCommand(IPC_COMMANDS.checkTelethon);
+  return invokeWithRetry(IPC_COMMANDS.checkTelethon);
 }
 
 /** Pre-flight check before starting an account */
 export async function checkAccountStart(accountId: number): Promise<StartupCheckResult> {
-  return invokeWithRetryCommand(IPC_COMMANDS.checkAccountStart, { accountId });
+  return invokeWithRetry(IPC_COMMANDS.checkAccountStart, { accountId });
 }
 
 /** Pre-flight check before starting login flow */
@@ -544,14 +464,14 @@ export async function checkCanLogin(
   apiIdOverride?: number | null,
   apiHashOverride?: string | null
 ): Promise<StartupCheckResult> {
-  return invokeWithRetryCommand(IPC_COMMANDS.checkCanLogin, { apiIdOverride, apiHashOverride });
+  return invokeWithRetry(IPC_COMMANDS.checkCanLogin, { apiIdOverride, apiHashOverride });
 }
 
 /** System health check for app startup */
 export async function checkSystem(): Promise<StartupCheckResult> {
-  return invokeWithRetryCommand(IPC_COMMANDS.checkSystem);
+  return invokeWithRetry(IPC_COMMANDS.checkSystem);
 }
 
 export async function getDiagnosticsSnapshot(): Promise<DiagnosticsSnapshot> {
-  return invokeWithRetryCommand(IPC_COMMANDS.diagnosticsSnapshot);
+  return invokeWithRetry(IPC_COMMANDS.diagnosticsSnapshot);
 }
