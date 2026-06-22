@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
@@ -8,6 +8,12 @@ import {
   IconDeviceFloppy,
   IconRefresh,
   IconSearch,
+  IconUser,
+  IconDevices,
+  IconPlayerPlay,
+  IconAlertTriangle,
+  IconCircleCheck,
+  IconX,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
@@ -15,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { AnimatedBadge } from "@/components/motion";
 
 // Motion-enhanced Card
 const MotionCard = motion.create(Card);
@@ -51,9 +57,9 @@ interface TelegramGroup {
 
 export default function AccountEditPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const accountId = parseInt(id || "0");
+  const rawId = parseInt(id || "0");
+  const accountId = isNaN(rawId) ? 0 : rawId;
 
   const [hasChanges, setHasChanges] = useState(false);
   const [groupPickerOpen, setGroupPickerOpen] = useState(false);
@@ -74,7 +80,7 @@ export default function AccountEditPage() {
   }>({});
 
   // Fetch account
-  const { data: accounts = [] } = useQuery({
+  const { data: accounts = [], isLoading: accountsLoading } = useQuery({
     queryKey: ["accounts"],
     queryFn: listAccounts,
   });
@@ -84,13 +90,16 @@ export default function AccountEditPage() {
   // Fetch group slots
   const { data: groupSlots = [] } = useQuery({
     queryKey: ["group-slots", accountId],
-    queryFn: async () => {
-      // Initialize slots first
-      await initGroupSlots(accountId);
-      return getGroupSlots(accountId);
-    },
+    queryFn: () => getGroupSlots(accountId),
     enabled: accountId > 0,
   });
+
+  // Initialize group slots once on mount (not inside queryFn to avoid repeated side effects on refetch)
+  useEffect(() => {
+    if (accountId > 0) {
+      void initGroupSlots(accountId);
+    }
+  }, [accountId]);
 
   // Fetch available groups (placeholder)
   const {
@@ -268,6 +277,17 @@ export default function AccountEditPage() {
     g.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  if (accountsLoading) {
+    return (
+      <PageTransition className="min-h-screen flex flex-col">
+        <PageHeader title="Edit Account" backTo="/accounts" />
+        <main className="flex-1 p-6 flex items-center justify-center">
+          <p className="text-muted-foreground">Loading account...</p>
+        </main>
+      </PageTransition>
+    );
+  }
+
   if (!account) {
     return (
       <PageTransition className="min-h-screen flex flex-col">
@@ -285,6 +305,8 @@ export default function AccountEditPage() {
         title="Edit Account"
         description={account.telegram_name || account.phone || `ID: ${account.user_id}`}
         backTo="/accounts"
+        icon={IconUser}
+        iconColor="text-sky-500"
       >
         <Button onClick={handleSave} disabled={!hasChanges || updateAccountMutation.isPending}>
           <IconDeviceFloppy className="size-4 mr-1" />
@@ -300,8 +322,15 @@ export default function AccountEditPage() {
           transition={{ duration: 0.3, delay: 0 }}
         >
           <CardHeader>
-            <CardTitle>Account Information</CardTitle>
-            <CardDescription>Basic account details</CardDescription>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-sky-500/10">
+                <IconUser className="size-4 text-sky-500" />
+              </div>
+              <div>
+                <CardTitle>Account Information</CardTitle>
+                <CardDescription>Basic account details</CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-2">
@@ -322,26 +351,22 @@ export default function AccountEditPage() {
               )}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label className="text-muted-foreground">Telegram Name</Label>
-                <p className="text-sm">{account.telegram_name || "-"}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg bg-muted/40 border border-border/60 px-3 py-2.5">
+                <p className="text-xs text-muted-foreground mb-0.5">Telegram Name</p>
+                <p className="text-sm font-medium">{account.telegram_name || "—"}</p>
               </div>
-              <div>
-                <Label className="text-muted-foreground">Phone</Label>
-                <p className="text-sm">{account.phone || "-"}</p>
+              <div className="rounded-lg bg-muted/40 border border-border/60 px-3 py-2.5">
+                <p className="text-xs text-muted-foreground mb-0.5">Phone</p>
+                <p className="text-sm font-medium">{account.phone || "—"}</p>
               </div>
-              <div>
-                <Label className="text-muted-foreground">User ID</Label>
-                <p className="text-sm font-mono">{account.user_id || "-"}</p>
+              <div className="rounded-lg bg-muted/40 border border-border/60 px-3 py-2.5">
+                <p className="text-xs text-muted-foreground mb-0.5">User ID</p>
+                <p className="text-sm font-mono font-medium">{account.user_id || "—"}</p>
               </div>
-              <div>
-                <Label className="text-muted-foreground">Status</Label>
-                <p className="text-sm">
-                  <Badge variant={account.status === "running" ? "default" : "secondary"}>
-                    {account.status}
-                  </Badge>
-                </p>
+              <div className="rounded-lg bg-muted/40 border border-border/60 px-3 py-2.5">
+                <p className="text-xs text-muted-foreground mb-1">Status</p>
+                <AnimatedBadge status={account.status as import("@/lib/types").AccountStatus} />
               </div>
             </div>
           </CardContent>
@@ -354,53 +379,69 @@ export default function AccountEditPage() {
           transition={{ duration: 0.3, delay: 0.08 }}
         >
           <CardHeader>
-            <CardTitle>Game Groups</CardTitle>
-            <CardDescription>
-              Configure up to 2 Werewolf game groups for this account
-            </CardDescription>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-500/10">
+                <IconDevices className="size-4 text-emerald-500" />
+              </div>
+              <div>
+                <CardTitle>Game Groups</CardTitle>
+                <CardDescription>
+                  Configure up to 2 Werewolf game groups for this account
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             {duplicateGroupWarning && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-400">
+                <IconAlertTriangle className="size-4 mt-0.5 shrink-0" />
                 {duplicateGroupWarning}
               </div>
             )}
             {slots.map((slot) => (
-              <div key={slot.slot} className="border rounded-lg p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div key={slot.slot} className={`border rounded-lg p-4 transition-colors ${slot.enabled ? "border-border bg-muted/20" : "border-border/50 bg-transparent"}`}>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-3">
-                    <h4 className="font-medium">Slot {slot.slot}</h4>
+                    <div className={`size-7 rounded-md flex items-center justify-center text-xs font-bold ${slot.enabled ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+                      {slot.slot}
+                    </div>
+                    <span className="font-medium text-sm">Slot {slot.slot}</span>
                     <Switch
                       checked={slot.enabled}
                       onCheckedChange={(checked) => updateSlot(slot.slot, { enabled: checked })}
                     />
-                    <span className="text-sm text-muted-foreground">
+                    <span className={`text-xs font-medium ${slot.enabled ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
                       {slot.enabled ? "Enabled" : "Disabled"}
                     </span>
                   </div>
                 </div>
 
                 {slot.enabled && (
-                  <div className="space-y-4">
+                  <div className="space-y-4 pt-3 border-t border-border/50">
                     {/* Group Selection */}
                     <div className="grid gap-2">
                       <Label>Game Group</Label>
                       <div className="flex flex-wrap gap-2">
                         {slot.group_title ? (
-                          <div className="flex-1 flex items-center justify-between border rounded-md px-3 py-2">
-                            <span>{slot.group_title}</span>
+                          <div className="flex-1 flex items-center justify-between border border-emerald-500/30 bg-emerald-500/5 rounded-md px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <IconCircleCheck className="size-4 text-emerald-500 shrink-0" />
+                              <span className="text-sm font-medium">{slot.group_title}</span>
+                            </div>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => clearGroup(slot.slot)}
+                              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-7 px-2"
                             >
+                              <IconX className="size-3.5 mr-1" />
                               Clear
                             </Button>
                           </div>
                         ) : (
                           <Button
                             variant="outline"
-                            className="flex-1"
+                            className="flex-1 border-dashed"
                             onClick={() => openGroupPicker(slot.slot)}
                           >
                             <IconSearch className="size-4 mr-2" />
@@ -411,6 +452,7 @@ export default function AccountEditPage() {
                           variant="outline"
                           size="icon"
                           onClick={() => openGroupPicker(slot.slot)}
+                          title="Refresh groups"
                         >
                           <IconRefresh className="size-4" />
                         </Button>
@@ -425,6 +467,7 @@ export default function AccountEditPage() {
                           variant={slot.moderator_kind === "main" ? "default" : "outline"}
                           size="sm"
                           onClick={() => updateSlot(slot.slot, { moderator_kind: "main" })}
+                          className={slot.moderator_kind === "main" ? "" : "border-border/60"}
                         >
                           Main Bot
                         </Button>
@@ -432,6 +475,7 @@ export default function AccountEditPage() {
                           variant={slot.moderator_kind === "beta" ? "default" : "outline"}
                           size="sm"
                           onClick={() => updateSlot(slot.slot, { moderator_kind: "beta" })}
+                          className={slot.moderator_kind === "beta" ? "" : "border-border/60"}
                         >
                           Beta Bot
                         </Button>
@@ -451,10 +495,17 @@ export default function AccountEditPage() {
           transition={{ duration: 0.3, delay: 0.24 }}
         >
           <CardHeader>
-            <CardTitle>Join Rules Overrides</CardTitle>
-            <CardDescription>
-              Override global join settings for this account (leave empty to use global defaults)
-            </CardDescription>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <IconPlayerPlay className="size-4 text-orange-500" />
+              </div>
+              <div>
+                <CardTitle>Join Rules Overrides</CardTitle>
+                <CardDescription>
+                  Override global join settings for this account (leave empty to use global defaults)
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -507,22 +558,26 @@ export default function AccountEditPage() {
               <p className="text-xs text-destructive">{errors.joinRules}</p>
             )}
             {!errors.joinRules && joinCooldownWarning && (
-              <p className="text-xs text-warning">{joinCooldownWarning}</p>
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
+                <IconAlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+                {joinCooldownWarning}
+              </div>
             )}
           </CardContent>
         </MotionCard>
 
         {/* Unsaved changes indicator */}
         {hasChanges && (
-          <div className="fixed bottom-6 right-6 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-3">
-            <span>You have unsaved changes</span>
+          <div className="fixed bottom-6 right-6 bg-background border border-border shadow-xl rounded-xl px-4 py-3 flex items-center gap-3 backdrop-blur-sm">
+            <div className="size-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="text-sm font-medium text-foreground">Unsaved changes</span>
             <Button
-              variant="secondary"
               size="sm"
               onClick={handleSave}
               disabled={updateAccountMutation.isPending}
             >
-              Save Now
+              <IconDeviceFloppy className="size-3.5 mr-1.5" />
+              {updateAccountMutation.isPending ? "Saving..." : "Save Now"}
             </Button>
           </div>
         )}
@@ -550,17 +605,22 @@ export default function AccountEditPage() {
               </Button>
             </div>
 
-            <div className="max-h-64 overflow-y-auto border rounded-md">
+            <div className="max-h-64 overflow-y-auto border rounded-lg">
               {loadingGroups ? (
-                <div className="p-4 text-center text-muted-foreground">
+                <div className="p-6 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
+                  <IconRefresh className="size-5 animate-spin opacity-50" />
                   Loading groups...
                 </div>
               ) : groupsError ? (
-                <div className="p-4 text-center text-muted-foreground">
-                  Failed to load groups. Ensure the account is logged in and try again.
+                <div className="p-4 text-center">
+                  <div className="flex items-center gap-2 justify-center text-destructive text-sm mb-1">
+                    <IconAlertTriangle className="size-4" />
+                    Failed to load groups
+                  </div>
+                  <p className="text-xs text-muted-foreground">Ensure the account is logged in and try again.</p>
                 </div>
               ) : filteredGroups.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">
+                <div className="p-6 text-center text-sm text-muted-foreground">
                   {availableGroups.length === 0
                     ? "No groups found. Start the account once to refresh chats, then try again."
                     : "No groups match your search."}
@@ -570,13 +630,13 @@ export default function AccountEditPage() {
                   {filteredGroups.map((group: TelegramGroup) => (
                     <div
                       key={group.id}
-                      className="p-3 hover:bg-muted/50 cursor-pointer"
+                      className="p-3 hover:bg-primary/5 cursor-pointer transition-colors border-l-2 border-l-transparent hover:border-l-primary/40"
                       onClick={() => selectGroup(group)}
                     >
-                      <div className="font-medium">{group.title}</div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="font-medium text-sm">{group.title}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
                         {group.group_type}
-                        {group.member_count !== null && ` • ${group.member_count} members`}
+                        {group.member_count !== null && ` · ${group.member_count} members`}
                       </div>
                     </div>
                   ))}

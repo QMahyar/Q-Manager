@@ -5,29 +5,23 @@
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::collections::BTreeSet;
 use std::fs;
-use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Component, Path, PathBuf};
 use tauri::command;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 use crate::commands::{error_response, CommandResult};
 use crate::db::{self, ActionPatternCreate};
+use crate::import_utils::{expand_import_candidates, split_zip_source};
 use crate::telethon;
 use crate::validation::{validate_pattern, validate_priority};
 use crate::workers::WORKER_MANAGER;
-use crate::import_utils::{expand_import_candidates, split_zip_source};
 
 /// Get the sessions directory path
 fn get_sessions_dir() -> PathBuf {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    exe_dir.join("sessions")
+    crate::utils::fs::get_sessions_dir()
 }
 
 /// Get session directory for a specific account
@@ -35,6 +29,11 @@ fn get_sessions_dir() -> PathBuf {
 /// This ensures consistency for imported accounts that may not have a user_id initially.
 fn get_account_session_dir(account_id: i64) -> PathBuf {
     get_sessions_dir().join(format!("account_{}", account_id))
+}
+
+fn is_safe_relative_path(path: &Path) -> bool {
+    path.components()
+        .all(|component| matches!(component, Component::CurDir | Component::Normal(_)))
 }
 
 const PATTERN_EXPORT_VERSION: i32 = 1;
@@ -216,7 +215,9 @@ pub fn account_import_resolve(
 }
 
 fn replace_existing_account(account_id: i64) -> CommandResult<()> {
-    // First stop the worker if running
+    // Stop the worker if running — block_on is safe here because
+    // account_import_resolve is a sync command running on a thread-pool thread,
+    // not inside an existing Tokio runtime context.
     let _ = tauri::async_runtime::block_on(WORKER_MANAGER.stop_account(account_id));
 
     // Get the user_id before deleting the account (needed for session folder path)
@@ -322,6 +323,11 @@ fn import_single_account(source_path: &str, account_name: &str) -> CommandResult
                     continue;
                 }
 
+                if !is_safe_relative_path(&relative_path) {
+                    log::warn!("Skipping ZIP entry with unsafe path: {:?}", relative_path);
+                    continue;
+                }
+
                 let outpath = session_dir.join(&relative_path);
 
                 if file.name().ends_with('/') {
@@ -388,14 +394,14 @@ fn import_single_account(source_path: &str, account_name: &str) -> CommandResult
         return Err(e);
     }
 
-    // Initialize group slots for the new account
+    // Initialize group slots for the new account (slots 1 and 2 are the valid slot numbers)
     conn.execute(
-        "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 0, 0, 'main')",
+        "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 1, 0, 'main')",
         params![account_id],
     )
     .map_err(error_response)?;
     conn.execute(
-        "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 1, 0, 'main')",
+        "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 2, 0, 'main')",
         params![account_id],
     )
     .map_err(error_response)?;
@@ -490,8 +496,13 @@ fn validate_imported_session(
         .map_err(error_response)?;
     let response = client
         .request("state", serde_json::json!({}))
-        .map_err(error_response)?;
+        .map_err(|e| {
+            let _ = client.shutdown();
+            error_response(e)
+        })?;
+
     if !response.ok {
+        let _ = client.shutdown();
         return Err(error_response(
             response
                 .error
@@ -501,6 +512,7 @@ fn validate_imported_session(
 
     let payload = response.payload.unwrap_or(serde_json::json!({}));
     if payload.get("state").and_then(|s| s.as_str()) != Some("ready") {
+        let _ = client.shutdown();
         return Ok(None);
     }
 
@@ -763,7 +775,11 @@ fn export_accounts_zip(account_ids: Vec<i64>, dest: PathBuf) -> CommandResult<Ex
 
     let success = failed == 0;
     let message = if success {
-        format!("Exported {} account(s) to {}", items.len(), zip_path.display())
+        format!(
+            "Exported {} account(s) to {}",
+            items.len(),
+            zip_path.display()
+        )
     } else {
         format!(
             "Exported {} account(s) with {} failure(s). Output: {}",
@@ -806,7 +822,10 @@ fn export_account_to_zip(
     ))
 }
 
-fn export_accounts_folder(account_ids: Vec<i64>, dest: PathBuf) -> CommandResult<ExportBatchResult> {
+fn export_accounts_folder(
+    account_ids: Vec<i64>,
+    dest: PathBuf,
+) -> CommandResult<ExportBatchResult> {
     fs::create_dir_all(&dest).map_err(error_response)?;
 
     let mut items = Vec::new();
@@ -856,7 +875,7 @@ fn export_accounts_folder(account_ids: Vec<i64>, dest: PathBuf) -> CommandResult
 
 fn export_account_to_folder(
     account_id: i64,
-    dest: &PathBuf,
+    dest: &Path,
 ) -> Result<(String, String), crate::errors::ErrorResponse> {
     let (account_name, session_dir) = get_account_export_info(account_id)?;
 
@@ -876,7 +895,9 @@ fn export_account_to_folder(
     ))
 }
 
-fn get_account_export_info(account_id: i64) -> Result<(String, PathBuf), crate::errors::ErrorResponse> {
+fn get_account_export_info(
+    account_id: i64,
+) -> Result<(String, PathBuf), crate::errors::ErrorResponse> {
     let conn = db::get_conn().map_err(error_response)?;
     let (account_name, user_id): (String, Option<i64>) = conn
         .query_row(
@@ -931,10 +952,8 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
             zip.start_file(&name, options)
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
             let mut file = fs::File::open(&path)?;
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)?;
-            zip.write_all(&buffer)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            // Stream file into ZIP instead of reading entire file into RAM
+            std::io::copy(&mut file, zip)?;
         }
     }
 
@@ -958,14 +977,14 @@ fn phase_id_by_name(conn: &rusqlite::Connection, name: &str) -> CommandResult<Op
 }
 
 fn phase_exists(conn: &rusqlite::Connection, phase_id: i64) -> CommandResult<bool> {
-    let exists: i64 = conn
+    let exists: bool = conn
         .query_row(
-            "SELECT COUNT(1) FROM phases WHERE id = ?1",
+            "SELECT EXISTS(SELECT 1 FROM phases WHERE id = ?1)",
             params![phase_id],
             |row| row.get(0),
         )
         .map_err(error_response)?;
-    Ok(exists > 0)
+    Ok(exists)
 }
 
 fn action_id_by_name(conn: &rusqlite::Connection, name: &str) -> CommandResult<Option<i64>> {
@@ -981,14 +1000,14 @@ fn action_id_by_name(conn: &rusqlite::Connection, name: &str) -> CommandResult<O
 }
 
 fn action_exists(conn: &rusqlite::Connection, action_id: i64) -> CommandResult<bool> {
-    let exists: i64 = conn
+    let exists: bool = conn
         .query_row(
-            "SELECT COUNT(1) FROM actions WHERE id = ?1",
+            "SELECT EXISTS(SELECT 1 FROM actions WHERE id = ?1)",
             params![action_id],
             |row| row.get(0),
         )
         .map_err(error_response)?;
-    Ok(exists > 0)
+    Ok(exists)
 }
 
 #[command]
@@ -1066,6 +1085,25 @@ pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult>
     }
 
     let conn = db::get_conn().map_err(error_response)?;
+    // Wrap all inserts in a transaction so a mid-import failure doesn't leave a partial state
+    conn.execute("BEGIN", []).map_err(error_response)?;
+    let result = phase_patterns_import_inner(&conn, payload);
+    match result {
+        Ok(r) => {
+            conn.execute("COMMIT", []).map_err(error_response)?;
+            Ok(r)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
+fn phase_patterns_import_inner(
+    conn: &rusqlite::Connection,
+    payload: PatternExport,
+) -> CommandResult<PatternImportResult> {
     let mut imported = 0usize;
     let mut updated = 0usize;
     let mut skipped = 0usize;
@@ -1076,20 +1114,23 @@ pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult>
         validate_priority(item.priority).map_err(error_response)?;
 
         let phase_id = if let Some(phase_id) = item.phase_id {
-            if phase_exists(&conn, phase_id)? {
+            if phase_exists(conn, phase_id)? {
                 Some(phase_id)
             } else {
                 None
             }
         } else if let Some(name) = item.phase_name.as_deref() {
-            phase_id_by_name(&conn, name)?
+            phase_id_by_name(conn, name)?
         } else {
             None
         };
 
         let Some(phase_id) = phase_id else {
             skipped += 1;
-            skipped_items.push(format!("Phase pattern skipped (missing phase): {}", item.pattern));
+            skipped_items.push(format!(
+                "Phase pattern skipped (missing phase): {}",
+                item.pattern
+            ));
             continue;
         };
 
@@ -1101,7 +1142,7 @@ pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult>
             priority: item.priority,
         };
 
-        let was_updated = db::upsert_phase_pattern(&conn, &data).map_err(error_response)?;
+        let was_updated = db::upsert_phase_pattern(conn, &data).map_err(error_response)?;
         if was_updated {
             updated += 1;
         } else {
@@ -1109,7 +1150,7 @@ pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult>
         }
     }
 
-    let _ = db::bump_phase_version(&conn);
+    db::bump_phase_version(conn).map_err(error_response)?;
 
     Ok(PatternImportResult {
         imported,
@@ -1129,6 +1170,25 @@ pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult
     }
 
     let conn = db::get_conn().map_err(error_response)?;
+    // Wrap all inserts in a transaction so a mid-import failure doesn't leave a partial state
+    conn.execute("BEGIN", []).map_err(error_response)?;
+    let result = action_patterns_import_inner(&conn, payload);
+    match result {
+        Ok(r) => {
+            conn.execute("COMMIT", []).map_err(error_response)?;
+            Ok(r)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
+fn action_patterns_import_inner(
+    conn: &rusqlite::Connection,
+    payload: PatternExport,
+) -> CommandResult<PatternImportResult> {
     let mut imported = 0usize;
     let mut updated = 0usize;
     let mut skipped = 0usize;
@@ -1139,20 +1199,23 @@ pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult
         validate_priority(item.priority).map_err(error_response)?;
 
         let action_id = if let Some(action_id) = item.action_id {
-            if action_exists(&conn, action_id)? {
+            if action_exists(conn, action_id)? {
                 Some(action_id)
             } else {
                 None
             }
         } else if let Some(name) = item.action_name.as_deref() {
-            action_id_by_name(&conn, name)?
+            action_id_by_name(conn, name)?
         } else {
             None
         };
 
         let Some(action_id) = action_id else {
             skipped += 1;
-            skipped_items.push(format!("Action pattern skipped (missing action): {}", item.pattern));
+            skipped_items.push(format!(
+                "Action pattern skipped (missing action): {}",
+                item.pattern
+            ));
             continue;
         };
 
@@ -1165,7 +1228,7 @@ pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult
             step: item.step,
         };
 
-        let was_updated = db::upsert_action_pattern(&conn, &data).map_err(error_response)?;
+        let was_updated = db::upsert_action_pattern(conn, &data).map_err(error_response)?;
         if was_updated {
             updated += 1;
         } else {
@@ -1173,7 +1236,7 @@ pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult
         }
     }
 
-    let _ = db::bump_action_version(&conn);
+    db::bump_action_version(conn).map_err(error_response)?;
 
     Ok(PatternImportResult {
         imported,

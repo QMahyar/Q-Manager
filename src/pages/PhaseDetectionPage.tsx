@@ -11,7 +11,16 @@ import {
   IconDownload,
   IconUpload,
   IconClipboardList,
+  IconDotsVertical,
+  IconListCheck,
 } from "@tabler/icons-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -52,8 +61,8 @@ import type { PhasePattern } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
 import { RegexTestDialog, RegexValidationBadge } from "@/components/RegexTestDialog";
 import { useAccountEvents, RegexValidationEvent } from "@/hooks/useAccountEvents";
-import { HelpTooltip, helpContent } from "@/components/HelpTooltip";
 import { toastError } from "@/lib/toast-utils";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function PhaseDetectionPage() {
   const queryClient = useQueryClient();
@@ -152,7 +161,6 @@ export default function PhaseDetectionPage() {
     if (patternToDelete) {
       deletePatternMutation.mutate(patternToDelete.id, {
         onSettled: () => {
-          setDeletePatternOpen(false);
           setPatternToDelete(null);
         },
       });
@@ -244,32 +252,63 @@ export default function PhaseDetectionPage() {
       <PageHeader
         title="Phase Detection"
         description="Configure patterns to detect game phases"
+        icon={IconListCheck}
+        iconColor="text-violet-500"
       >
-        <div className="flex items-start gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2">
           {regexIssues.length > 0 && (
-            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive max-w-sm">
-              <div className="font-medium">Invalid regex patterns detected</div>
-              <ul className="mt-2 list-disc pl-5 space-y-1">
-                {regexIssues.map((issue, index) => (
-                  <li key={`${issue.scope}-${issue.pattern}-${index}`}>
-                    {issue.scope}: {issue.pattern} — {issue.error}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-2">
-                <Button variant="outline" size="sm" onClick={() => setRegexIssues([])}>
-                  Clear
-                </Button>
-              </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs cursor-pointer" onClick={() => setRegexIssues([])}>
+              <IconFlask className="size-3.5 shrink-0" />
+              <span className="font-semibold">{regexIssues.length} regex error{regexIssues.length > 1 ? "s" : ""}</span>
+              <span className="text-destructive/60">· click to dismiss</span>
             </div>
           )}
-          <Button
-            variant="outline"
-            onClick={handleReloadPatterns}
-            disabled={isReloading}
-          >
-            <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
-            Reload Patterns
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm"><IconDotsVertical className="size-4" /></Button>} />
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={async () => {
+                  const path = await saveDialog({ title: "Export phase patterns", defaultPath: "phase-patterns.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+                  if (!path) return;
+                  setIsExporting(true);
+                  try { await exportPhasePatterns(path as string); toast.success("Phase patterns exported"); }
+                  catch (e) { toastError("Failed to export patterns", e); }
+                  finally { setIsExporting(false); }
+                }}
+                disabled={isExporting}
+              >
+                <IconDownload className="size-4 mr-2" />
+                Export Patterns
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={async () => {
+                  const path = await openDialog({ title: "Import phase patterns", multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+                  if (!path) return;
+                  setIsImporting(true);
+                  try {
+                    const result = await importPhasePatterns(path as string);
+                    toast.success("Phase patterns imported", { description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.` });
+                    if (result.skipped_items?.length) toast.warning("Some patterns were skipped", { description: result.skipped_items.join("; ") });
+                    queryClient.invalidateQueries({ queryKey: ["phase-patterns"], exact: false });
+                    await reloadAllPatterns();
+                  } catch (e) { toastError("Failed to import patterns", e); }
+                  finally { setIsImporting(false); }
+                }}
+                disabled={isImporting}
+              >
+                <IconUpload className="size-4 mr-2" />
+                Import Patterns
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleReloadPatterns} disabled={isReloading}>
+                <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
+                Reload Workers
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" onClick={() => setAddPatternOpen(true)}>
+            <IconPlus className="size-4 mr-1" />
+            Add Pattern
           </Button>
         </div>
       </PageHeader>
@@ -290,109 +329,51 @@ export default function PhaseDetectionPage() {
             <TabsContent key={phase.id} value={String(phase.id)}>
               <div className="space-y-4">
                 {/* Phase Info */}
-                <div className="bg-muted/50 rounded-lg p-4">
+                <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-medium">{phase.display_name}</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {getPhaseDescription(phase.name)}
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <div className="p-1.5 rounded-lg bg-violet-500/10 shrink-0 mt-0.5">
+                        <IconListCheck className="size-4 text-violet-500" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm text-foreground">{phase.display_name}</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5 max-w-md">
+                          {getPhaseDescription(phase.name)}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">Priority: {phase.priority}</Badge>
+                      <Badge variant="outline" className="font-mono text-xs border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-500/5">
+                        Priority {phase.priority}
+                      </Badge>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => openEditPhasePriority(phase.priority)}
+                        className="h-7 text-xs border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400"
                       >
-                        Edit Priority
+                        Edit
                       </Button>
                     </div>
                   </div>
                 </div>
 
-                {/* Patterns Header */}
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h4 className="text-sm font-medium">
-                    Patterns ({patterns.length})
-                  </h4>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Exports all phases</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        const path = await saveDialog({
-                          title: "Export phase patterns",
-                          defaultPath: "phase-patterns.json",
-                          filters: [{ name: "JSON", extensions: ["json"] }],
-                        });
-                        if (!path) return;
-                        setIsExporting(true);
-                        try {
-                          await exportPhasePatterns(path as string);
-                          toast.success("Phase patterns exported", {
-                            description: "JSON file saved successfully.",
-                          });
-                        } catch (e) {
-                          toastError("Failed to export patterns", e);
-                        } finally {
-                          setIsExporting(false);
-                        }
-                      }}
-                      disabled={isExporting}
-                    >
-                      <IconDownload className="size-4 mr-1" />
-                      Export
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        const path = await openDialog({
-                          title: "Import phase patterns",
-                          multiple: false,
-                          filters: [{ name: "JSON", extensions: ["json"] }],
-                        });
-                        if (!path) return;
-                        setIsImporting(true);
-                        try {
-                          const result = await importPhasePatterns(path as string);
-                          toast.success("Phase patterns imported", {
-                            description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.`,
-                          });
-                          if (result.skipped_items?.length) {
-                            toast.warning("Some patterns were skipped", {
-                              description: result.skipped_items.join("; "),
-                            });
-                          }
-                          queryClient.invalidateQueries({ queryKey: ["phase-patterns"], exact: false });
-                          await reloadAllPatterns();
-                        } catch (e) {
-                          toastError("Failed to import patterns", e);
-                        } finally {
-                          setIsImporting(false);
-                        }
-                      }}
-                      disabled={isImporting}
-                    >
-                      <IconUpload className="size-4 mr-1" />
-                      Import
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => setAddPatternOpen(true)}
-                    >
-                      <IconPlus className="size-4 mr-1" />
-                      Add Pattern
-                    </Button>
-                  </div>
+                {/* Patterns Header — merged into one compact row */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {patterns.length} pattern{patterns.length !== 1 ? "s" : ""}
+                  </span>
+                  <Button size="sm" onClick={() => setAddPatternOpen(true)}>
+                    <IconPlus className="size-4 mr-1" />
+                    Add Pattern
+                  </Button>
                 </div>
 
                 {/* Patterns Table */}
                 {patternsLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Loading patterns...
+                  <div className="border rounded-lg p-8 text-center text-muted-foreground flex flex-col items-center gap-2">
+                    <IconRefresh className="size-5 animate-spin opacity-40" />
+                    <span className="text-sm">Loading patterns...</span>
                   </div>
                 ) : patterns.length === 0 ? (
                   <EmptyState
@@ -401,23 +382,28 @@ export default function PhaseDetectionPage() {
                     icon={<IconClipboardList className="h-8 w-8 text-muted-foreground" />}
                   />
                 ) : (
-                  <div className="border rounded-lg">
+                  <div className="rounded-lg border border-border/70 bg-card/70 shadow-sm overflow-hidden">
                     <Table>
                       <TableHeader>
-                        <TableRow>
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
                           <TableHead>Pattern</TableHead>
-                          <TableHead className="w-24">Type</TableHead>
-                          <TableHead className="w-24">Priority</TableHead>
-                          <TableHead className="w-24">Enabled</TableHead>
-                          <TableHead className="w-24 text-right">Actions</TableHead>
+                          <TableHead className="w-28">Type</TableHead>
+                          <TableHead className="w-20">Priority</TableHead>
+                          <TableHead className="w-20">Enabled</TableHead>
+                          <TableHead className="w-28 text-right pr-4">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody ref={patternsParent}>
                         {patterns
                           .sort((a, b) => b.priority - a.priority)
-                          .map((pattern) => (
-                            <TableRow key={pattern.id}>
-                              <TableCell className="font-mono text-sm">
+                          .map((pattern, index) => (
+                            <TableRow
+                              key={pattern.id}
+                              className={`${!pattern.enabled ? "opacity-50" : ""} ${
+                                index % 2 === 0 ? "hover:bg-muted/20" : "bg-muted/10 hover:bg-muted/25"
+                              }`}
+                            >
+                              <TableCell className="font-mono text-xs bg-muted/20 max-w-xs truncate">
                                 {pattern.pattern}
                               </TableCell>
                               <TableCell>
@@ -435,13 +421,13 @@ export default function PhaseDetectionPage() {
                                   onCheckedChange={() => handleTogglePattern(pattern)}
                                 />
                               </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-1">
+                              <TableCell className="text-right pr-4">
+                                <div className="flex items-center justify-end gap-0.5">
                                   <RegexTestDialog
                                     pattern={pattern.pattern}
                                     isRegex={pattern.is_regex}
                                     trigger={
-                                      <Button variant="ghost" size="icon-sm" title="Test pattern" aria-label="Test pattern">
+                                      <Button variant="ghost" size="icon-sm" title="Test pattern" aria-label="Test pattern" className="text-muted-foreground hover:text-violet-500 hover:bg-violet-500/10">
                                         <IconFlask className="size-4" />
                                       </Button>
                                     }
@@ -452,6 +438,7 @@ export default function PhaseDetectionPage() {
                                     title="Edit pattern"
                                     aria-label="Edit pattern"
                                     onClick={() => openEditPattern(pattern)}
+                                    className="text-muted-foreground hover:text-foreground hover:bg-muted"
                                   >
                                     <IconPencil className="size-4" />
                                   </Button>
@@ -463,6 +450,7 @@ export default function PhaseDetectionPage() {
                                     onClick={() => {
                                       setPatternToDelete(pattern);
                                     }}
+                                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                   >
                                     <IconTrash className="size-4" />
                                   </Button>

@@ -7,6 +7,8 @@ import {
   IconCheck,
   IconLoader2,
   IconAlertCircle,
+  IconCircleCheckFilled,
+  IconApi,
 } from "@tabler/icons-react";
 import {
   Dialog,
@@ -74,6 +76,16 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
   const [accountNameError, setAccountNameError] = useState<string | undefined>();
   const [accountNameTouched, setAccountNameTouched] = useState(false);
 
+  // Cancel login session on dialog close/unmount while login is in progress
+  useEffect(() => {
+    return () => {
+      if (token && step !== "success" && step !== "error") {
+        void loginCancel(token).catch(() => {});
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   // Reset state when dialog opens
   useEffect(() => {
     if (open) {
@@ -102,6 +114,8 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
   useEffect(() => {
     if (!token || step === "success" || step === "error") return;
 
+    // Use a ref-snapshot of the handler so the interval always calls the
+    // latest version without needing to be recreated on every step change.
     const interval = setInterval(async () => {
       try {
         const state = await loginGetState(token);
@@ -112,6 +126,7 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
     }, 1000);
 
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, step]);
 
   const initLogin = async () => {
@@ -293,10 +308,12 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
         apiHashOverride || null
       );
       setStep("success");
-      setTimeout(() => {
+      const successTimer = setTimeout(() => {
         onSuccess();
         onOpenChange(false);
       }, 1500);
+      // Clean up timer if component unmounts before it fires
+      return () => clearTimeout(successTimer);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
       setStep("error");
@@ -328,7 +345,7 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
     const currentIndex = steps.findIndex(s => s.key === step);
     
     return (
-      <div className="flex items-center justify-center gap-2 mb-6">
+      <div className="flex items-center justify-center gap-1 mb-6">
         {steps.map((s, i) => {
           const Icon = s.icon;
           const isActive = s.key === step;
@@ -337,25 +354,33 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
           
           return (
             <div key={s.key} className="flex items-center">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : isCompleted || isSkipped
-                    ? "bg-success text-success-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {isCompleted || isSkipped ? (
-                  <IconCheck className="w-4 h-4" />
-                ) : (
-                  <Icon className="w-4 h-4" />
-                )}
+              <div className="flex flex-col items-center gap-1.5">
+                <div
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 ring-2 ${
+                    isActive
+                      ? "bg-primary text-primary-foreground ring-primary/30"
+                      : isCompleted || isSkipped
+                      ? "bg-emerald-500 text-white ring-emerald-500/30"
+                      : "bg-muted text-muted-foreground ring-transparent"
+                  }`}
+                >
+                  {isCompleted || isSkipped ? (
+                    <IconCheck className="w-4 h-4" />
+                  ) : (
+                    <Icon className="w-4 h-4" />
+                  )}
+                </div>
+                <span className={`text-[10px] font-medium leading-none ${
+                  isActive ? "text-primary" : isCompleted || isSkipped ? "text-emerald-500" : "text-muted-foreground"
+                }`}>
+                  {s.label}
+                  {s.optional && <span className="opacity-60"> (opt)</span>}
+                </span>
               </div>
               {i < steps.length - 1 && (
                 <div
-                  className={`w-8 h-0.5 ${
-                    currentIndex > i || step === "success" ? "bg-success" : "bg-muted"
+                  className={`w-10 h-0.5 mb-4 mx-1 rounded-full transition-all duration-300 ${
+                    currentIndex > i || step === "success" ? "bg-emerald-500" : "bg-muted"
                   }`}
                 />
               )}
@@ -369,28 +394,42 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
   const renderContent = () => {
     if (step === "init" || (loading && step !== "phone" && step !== "code" && step !== "password" && step !== "name")) {
       return (
-        <div className="flex flex-col items-center justify-center py-8">
-          <IconLoader2 className="w-8 h-8 animate-spin text-primary mb-4" />
-          <p className="text-muted-foreground">Initializing Telethon...</p>
+        <div className="flex flex-col items-center justify-center py-10 gap-4">
+          <div className="p-4 rounded-2xl bg-primary/10">
+            <IconLoader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+          <div className="text-center">
+            <p className="font-medium text-foreground">Connecting to Telegram</p>
+            <p className="text-sm text-muted-foreground mt-1">Initializing Telethon worker...</p>
+          </div>
         </div>
       );
     }
 
     if (step === "error") {
       return (
-        <div className="flex flex-col items-center justify-center py-8">
-          <IconAlertCircle className="w-12 h-12 text-destructive mb-4" />
-          <p className="text-destructive font-medium mb-2">Login Failed</p>
-          <p className="text-sm text-muted-foreground text-center">{error}</p>
+        <div className="flex flex-col items-center justify-center py-8 gap-4">
+          <div className="p-4 rounded-2xl bg-destructive/10">
+            <IconAlertCircle className="w-8 h-8 text-destructive" />
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-destructive mb-1">Login Failed</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-line">{error}</p>
+          </div>
         </div>
       );
     }
 
     if (step === "success") {
       return (
-        <div className="flex flex-col items-center justify-center py-8">
-          <IconCheck className="w-12 h-12 text-success mb-4" />
-          <p className="text-success font-medium">Account Created!</p>
+        <div className="flex flex-col items-center justify-center py-10 gap-4">
+          <div className="p-4 rounded-2xl bg-emerald-500/10">
+            <IconCircleCheckFilled className="w-10 h-10 text-emerald-500" />
+          </div>
+          <div className="text-center">
+            <p className="font-semibold text-emerald-500">Account Created!</p>
+            <p className="text-sm text-muted-foreground mt-1">Redirecting you now...</p>
+          </div>
         </div>
       );
     }
@@ -418,28 +457,36 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
               </p>
             )}
           </div>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="apiIdOverride">API ID Override (optional)</Label>
-              <Input
-                id="apiIdOverride"
-                type="number"
-                value={apiIdOverride}
-                onChange={(e) => setApiIdOverride(e.target.value)}
-                placeholder="Use global default"
-                disabled={loading}
-              />
+          <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <IconApi className="size-3.5" />
+              API Override (optional)
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="apiHashOverride">API Hash Override (optional)</Label>
-              <Input
-                id="apiHashOverride"
-                type="password"
-                value={apiHashOverride}
-                onChange={(e) => setApiHashOverride(e.target.value)}
-                placeholder="Use global default"
-                disabled={loading}
-              />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="apiIdOverride" className="text-xs">API ID</Label>
+                <Input
+                  id="apiIdOverride"
+                  type="number"
+                  value={apiIdOverride}
+                  onChange={(e) => setApiIdOverride(e.target.value)}
+                  placeholder="Use global default"
+                  disabled={loading}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="apiHashOverride" className="text-xs">API Hash</Label>
+                <Input
+                  id="apiHashOverride"
+                  type="password"
+                  value={apiHashOverride}
+                  onChange={(e) => setApiHashOverride(e.target.value)}
+                  placeholder="Use global default"
+                  disabled={loading}
+                  className="h-8 text-sm"
+                />
+              </div>
             </div>
           </div>
           {error && (
@@ -467,9 +514,9 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
             <p className="text-xs text-muted-foreground">
               Enter the code sent to your Telegram app
             </p>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <IconLoader2 className="h-3 w-3 animate-spin" />
-              Waiting for code...
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 rounded-md px-3 py-2">
+              <IconLoader2 className="h-3 w-3 animate-spin shrink-0" />
+              Waiting for code from your Telegram app...
             </div>
           </div>
           {error && (
@@ -510,12 +557,16 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
       return (
         <div className="space-y-4">
           {renderStepIndicator()}
-          <div className="bg-muted/50 rounded-lg p-4 mb-4">
-            <p className="text-sm font-medium">Logged in as:</p>
-            <p className="text-lg">
-              {userInfo?.firstName} {userInfo?.lastName}
-            </p>
-            <p className="text-sm text-muted-foreground">{userInfo?.phone}</p>
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 mb-4 flex items-center gap-3">
+            <div className="p-2 rounded-full bg-emerald-500/15">
+              <IconCircleCheckFilled className="size-5 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                {userInfo?.firstName} {userInfo?.lastName}
+              </p>
+              <p className="text-xs text-muted-foreground">{userInfo?.phone}</p>
+            </div>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="accountName">Account Name</Label>

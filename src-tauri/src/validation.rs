@@ -679,8 +679,7 @@ pub fn validate_ban_patterns_json(json: &str) -> ValidationResult<()> {
         }
         for (i, item) in arr.iter().enumerate() {
             // Can be a string (simple pattern) or an object with pattern and is_regex
-            if item.is_string() {
-                let pattern = item.as_str().unwrap();
+            if let Some(pattern) = item.as_str() {
                 if pattern.is_empty() {
                     return Err(ValidationError {
                         field: "ban_patterns_json".to_string(),

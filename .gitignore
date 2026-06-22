@@ -46,6 +46,9 @@ telethon-worker/dist/
 coverage/
 # Logs
 logs/
+# Python bytecode
+__pycache__/
+*.pyc
 # Environment files
 .env
 .env.*
@@ -53,3 +56,6 @@ logs/
 sessions/
 *.sqlite
 *.sqlite3
+
+# Stakpak tool data/session files
+.stakpak/

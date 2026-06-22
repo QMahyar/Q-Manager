@@ -8,8 +8,8 @@ interface SpinnerProps {
 export function Spinner({ className, size = "md" }: SpinnerProps) {
   const sizeClasses = {
     sm: "size-4 border-2",
-    md: "h-6 w-6 border-2",
-    lg: "h-8 w-8 border-3",
+    md: "size-6 border-2",
+    lg: "size-8 border-4",
   };
 
   return (
@@ -40,12 +40,12 @@ export function LoadingOverlay({ message = "Loading..." }: LoadingOverlayProps) 
   );
 }
 
-interface LoadingButtonProps {
+interface LoadingContentProps {
   loading?: boolean;
   children: React.ReactNode;
 }
 
-export function LoadingContent({ loading, children }: LoadingButtonProps) {
+export function LoadingContent({ loading, children }: LoadingContentProps) {
   if (loading) {
     return (
       <>

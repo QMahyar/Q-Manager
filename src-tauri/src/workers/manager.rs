@@ -9,9 +9,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, RwLock};
+use tokio::task::JoinHandle;
 
 use crate::db;
 use crate::events::emit_account_status;
+use crate::workers::account_worker::WorkerState;
 use crate::workers::AccountWorker;
 
 /// Global worker manager instance
@@ -87,11 +89,7 @@ impl WorkerManager {
 
     /// Get the sessions directory path
     fn get_sessions_dir() -> PathBuf {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| PathBuf::from("."));
-        exe_dir.join("sessions")
+        crate::utils::fs::get_sessions_dir()
     }
 
     /// Start an account worker
@@ -116,23 +114,9 @@ impl WorkerManager {
                 .ok_or_else(|| format!("Account {} not found", account_id))?;
             let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
 
-            // Get group slots with group_id, moderator_kind, and group_title
-            let mut stmt = conn.prepare(
-                "SELECT group_id, moderator_kind, COALESCE(group_title, '') FROM account_group_slots 
-                 WHERE account_id = ?1 AND enabled = 1 AND group_id IS NOT NULL"
-            ).map_err(|e| e.to_string())?;
-
-            let slots: Vec<(i64, String, String)> = stmt
-                .query_map([account_id], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                })
-                .map_err(|e| e.to_string())?
-                .filter_map(|r| r.ok())
-                .collect();
+            // Get enabled group slots via the shared DB operations layer
+            let slots = db::get_enabled_group_slots(&conn, account_id)
+                .map_err(|e| e.to_string())?;
 
             (account, settings, slots)
         };
@@ -243,87 +227,79 @@ impl WorkerManager {
         // Update status to starting
         {
             let conn = db::get_conn().map_err(|e| e.to_string())?;
-            db::update_account_status(&conn, account_id, "starting").map_err(|e| e.to_string())?;
+            db::update_account_status(&conn, account_id, WorkerState::Starting.as_str()).map_err(|e| e.to_string())?;
         }
-        emit_account_status(account_id, "starting", None);
+        emit_account_status(account_id, WorkerState::Starting.as_str(), None);
 
         // Create command channel
         let (command_tx, command_rx) = mpsc::channel::<WorkerCommand>(8);
         let account_name = account.account_name.clone();
 
-        // Spawn worker task using spawn_blocking for the Telethon operations
-        // since TdClient contains raw pointers that aren't Send
+        // Spawn worker task on the dedicated worker runtime.
+        // Using spawn directly avoids the convoluted tokio::spawn → spawn_blocking → block_on
+        // nesting that was previously required.
         let workers = self.workers.clone();
-        let runtime = Arc::clone(&self.worker_runtime);
-        let task_handle = tokio::spawn(async move {
-            log::info!("[{}] Worker task started", account_name);
+        let account_name_clone = account_name.clone();
+        let task_handle: JoinHandle<()> = self.worker_runtime.spawn(async move {
+            log::info!("[{}] Worker task started", account_name_clone);
 
-            // Run the worker in a blocking context
-            let config_clone = config.clone();
-            let account_name_clone = account_name.clone();
+            let mut worker = AccountWorker::new(config);
 
-            let result = tokio::task::spawn_blocking(move || {
-                runtime.block_on(async {
-                    let mut worker = AccountWorker::new(config_clone);
-                    let command_rx = command_rx;
+            // Tracks why the worker exited. `Some(msg)` means it ended in an error
+            // state (failed to start, fatal runtime error, or exhausted reconnects);
+            // `None` means a clean stop. This is the single source of truth for the
+            // final status so an error is never silently overwritten with "stopped".
+            let final_error: Option<String> = match worker.start().await {
+                Ok(()) => {
+                    log::info!(
+                        "[{}] Worker initialized, entering main loop",
+                        account_name_clone
+                    );
 
-                    match worker.start().await {
-                        Ok(()) => {
-                            log::info!(
-                                "[{}] Worker initialized, entering main loop",
-                                account_name_clone
-                            );
+                    // Update status to running
+                    if let Ok(conn) = db::get_conn() {
+                        let _ = db::update_account_status(&conn, account_id, WorkerState::Running.as_str());
+                    }
+                    emit_account_status(account_id, WorkerState::Running.as_str(), None);
 
-                            // Update status to running
-                            if let Ok(conn) = db::get_conn() {
-                                let _ = db::update_account_status(&conn, account_id, "running");
-                            }
-                            emit_account_status(account_id, "running", None);
+                    // Run the main loop
+                    let run_result = worker.run_loop(command_rx).await;
 
-                            // Run the main loop
-                            if let Err(e) = worker.run_loop(command_rx).await {
-                                log::error!("[{}] Worker error: {}", account_name_clone, e);
-                                emit_account_status(account_id, "error", Some(e));
-                            }
+                    // Stop the worker (best-effort cleanup of the Telethon session)
+                    if let Err(e) = worker.stop().await {
+                        log::debug!("[{}] Worker stop: {}", account_name_clone, e);
+                    }
 
-                            // Stop the worker
-                            if let Err(e) = worker.stop().await {
-                                log::error!(
-                                    "[{}] Error stopping worker: {}",
-                                    account_name_clone,
-                                    e
-                                );
-                            }
-                        }
+                    match run_result {
+                        Ok(()) => None,
                         Err(e) => {
-                            log::error!("[{}] Failed to start worker: {}", account_name_clone, e);
-                            emit_account_status(account_id, "error", Some(e.clone()));
-
-                            // Update DB status to error
-                            if let Ok(conn) = db::get_conn() {
-                                let _ = db::update_account_status(&conn, account_id, "error");
-                            }
+                            log::error!("[{}] Worker error: {}", account_name_clone, e);
+                            Some(e)
                         }
                     }
-                })
-            })
-            .await;
+                }
+                Err(e) => {
+                    log::error!("[{}] Failed to start worker: {}", account_name_clone, e);
+                    Some(e)
+                }
+            };
 
-            if let Err(e) = result {
-                log::error!("[{}] Worker task panicked: {}", account_name, e);
-            }
-
-            // Atomically mark stopped and remove from workers map
+            // Update DB status first, then remove from map so start_account
+            // cannot race between "not in map" and DB still showing "running".
             {
                 let mut workers_guard = workers.write().await;
-                workers_guard.remove(&account_id);
+                let (status, message): (&str, Option<String>) = match &final_error {
+                    Some(e) => (WorkerState::Error(String::new()).as_str(), Some(e.clone())),
+                    None => (WorkerState::Stopped.as_str(), None),
+                };
                 if let Ok(conn) = db::get_conn() {
-                    let _ = db::update_account_status(&conn, account_id, "stopped");
+                    let _ = db::update_account_status(&conn, account_id, status);
                 }
-                emit_account_status(account_id, "stopped", None);
+                workers_guard.remove(&account_id);
+                emit_account_status(account_id, status, message);
             }
 
-            log::info!("[{}] Worker task ended", account_name);
+            log::info!("[{}] Worker task ended", account_name_clone);
         });
 
         // Store the handle
@@ -361,19 +337,19 @@ impl WorkerManager {
                     workers.remove(&account_id);
                 }
                 if let Ok(conn) = db::get_conn() {
-                    let _ = db::update_account_status(&conn, account_id, "stopped");
+                    let _ = db::update_account_status(&conn, account_id, WorkerState::Stopped.as_str());
                 }
-                emit_account_status(account_id, "stopped", None);
+                emit_account_status(account_id, WorkerState::Stopped.as_str(), None);
                 return Ok(());
             }
 
             // Update status to stopping
             {
                 let conn = db::get_conn().map_err(|e| e.to_string())?;
-                db::update_account_status(&conn, account_id, "stopping")
+                db::update_account_status(&conn, account_id, WorkerState::Stopping.as_str())
                     .map_err(|e| e.to_string())?;
             }
-            emit_account_status(account_id, "stopping", None);
+            emit_account_status(account_id, WorkerState::Stopping.as_str(), None);
 
             // Send shutdown signal
             let _ = command_tx.send(WorkerCommand::Shutdown).await;
@@ -401,35 +377,47 @@ impl WorkerManager {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
 
-            // Ensure cleanup
+            // The worker task removes itself from the map and emits "stopped" atomically.
+            // Only force-remove and emit "stopped" here if the task timed out and is still
+            // in the map — avoid double-emitting if the worker already cleaned up.
             {
                 let mut workers = self.workers.write().await;
-                workers.remove(&account_id);
+                if workers.remove(&account_id).is_some() {
+                    // Worker didn't clean itself up in time — force status update
+                    if let Ok(conn) = db::get_conn() {
+                        let _ = db::update_account_status(&conn, account_id, WorkerState::Stopped.as_str());
+                    }
+                    emit_account_status(account_id, WorkerState::Stopped.as_str(), None);
+                }
             }
-
-            // Ensure stopped status is reflected when we stop directly
-            if let Ok(conn) = db::get_conn() {
-                let _ = db::update_account_status(&conn, account_id, "stopped");
-            }
-            emit_account_status(account_id, "stopped", None);
 
             Ok(())
         } else {
             // Account not running, just ensure status is stopped
             {
                 let conn = db::get_conn().map_err(|e| e.to_string())?;
-                db::update_account_status(&conn, account_id, "stopped")
+                db::update_account_status(&conn, account_id, WorkerState::Stopped.as_str())
                     .map_err(|e| e.to_string())?;
             }
-            emit_account_status(account_id, "stopped", None);
+            emit_account_status(account_id, WorkerState::Stopped.as_str(), None);
             Ok(())
         }
     }
 
-    /// Check if an account is running
+    /// Check if an account is running (async version)
     pub async fn is_running(&self, account_id: i64) -> bool {
         let workers = self.workers.read().await;
         workers
+            .get(&account_id)
+            .map(|h| h.is_running())
+            .unwrap_or(false)
+    }
+
+    /// Check if an account is running — synchronous version for use in sync commands.
+    /// Uses `blocking_read` which is safe to call from a non-async context.
+    pub fn is_account_running(&self, account_id: i64) -> bool {
+        self.workers
+            .blocking_read()
             .get(&account_id)
             .map(|h| h.is_running())
             .unwrap_or(false)

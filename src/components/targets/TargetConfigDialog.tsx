@@ -25,9 +25,8 @@ import {
 } from "@/lib/api";
 import type { Action, TargetBlacklist, TargetPair, TargetRule } from "@/lib/types";
 import { validateDelay } from "@/lib/validation";
-import { toast } from "@/components/ui/sonner";
 import { toastError } from "@/lib/toast-utils";
-import { IconBan, IconClock, IconHeart, IconPlus, IconSettings, IconTrash } from "@tabler/icons-react";
+import { IconBan, IconClock, IconHeart, IconPlus, IconSettings, IconTrash, IconInfoCircle } from "@tabler/icons-react";
 
 interface TargetConfigDialogProps {
   open: boolean;
@@ -76,9 +75,14 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
 
       if (override) {
         setUseOverride(true);
-        const rule: TargetRule = JSON.parse(override.rule_json);
-        setTargets(rule.targets?.join(", ") || "");
-        setRandomFallback(rule.random_fallback ?? true);
+        let rule: TargetRule | null = null;
+        try {
+          rule = JSON.parse(override.rule_json) as TargetRule;
+        } catch {
+          rule = null;
+        }
+        setTargets(rule?.targets?.join(", ") || "");
+        setRandomFallback(rule?.random_fallback ?? true);
       } else {
         setUseOverride(false);
         setTargets("");
@@ -232,8 +236,8 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
 
           <div className="flex-1 overflow-y-auto py-4">
             <TabsContent value="targets" className="mt-0 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <Label htmlFor="use-override">Use custom targets (override default)</Label>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="use-override" className="cursor-pointer">Use custom targets (override default)</Label>
                 <Switch id="use-override" checked={useOverride} onCheckedChange={setUseOverride} />
               </div>
 
@@ -263,15 +267,18 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
               )}
 
               {!useOverride && (
-                <p className="text-sm text-muted-foreground">
-                  Using global default targeting rules for this action.
-                </p>
+                <div className="flex items-start gap-2 rounded-lg bg-muted/60 border border-border px-3 py-2.5">
+                  <IconInfoCircle className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <p className="text-sm text-muted-foreground">
+                    Using global default targeting rules for this action.
+                  </p>
+                </div>
               )}
             </TabsContent>
 
             <TabsContent value="delay" className="mt-0 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <Label htmlFor="use-delay-override">Use custom delay (override default)</Label>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="use-delay-override" className="cursor-pointer">Use custom delay (override default)</Label>
                 <Switch id="use-delay-override" checked={useDelayOverride} onCheckedChange={setUseDelayOverride} />
               </div>
 
@@ -318,9 +325,12 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
               )}
 
               {!useDelayOverride && (
-                <p className="text-sm text-muted-foreground">
-                  Using global default delay (2-8 seconds).
-                </p>
+                <div className="flex items-start gap-2 rounded-lg bg-muted/60 border border-border px-3 py-2.5">
+                  <IconInfoCircle className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <p className="text-sm text-muted-foreground">
+                    Using global default delay (2–8 seconds).
+                  </p>
+                </div>
               )}
             </TabsContent>
 
@@ -342,21 +352,23 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
               </p>
 
               {blacklistEntries.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No blacklisted players for this action.
-                </p>
+                <div className="flex items-start gap-2 rounded-lg bg-muted/60 border border-border px-3 py-2.5">
+                  <IconBan className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <p className="text-sm text-muted-foreground">No blacklisted players for this action.</p>
+                </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {blacklistEntries.map((entry) => (
-                    <div key={entry.id} className="flex items-center justify-between p-2 border rounded">
-                      <span>{entry.button_text}</span>
+                    <div key={entry.id} className="flex items-center justify-between px-3 py-2 border rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors">
+                      <span className="text-sm font-medium">{entry.button_text}</span>
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleRemoveBlacklist(entry.id)}
                         aria-label="Remove blacklist entry"
+                        className="hover:text-destructive hover:bg-destructive/10"
                       >
-                        <IconTrash className="size-4 text-destructive" />
+                        <IconTrash className="size-4" />
                       </Button>
                     </div>
                   ))}
@@ -389,26 +401,28 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
                 </p>
 
                 {pairs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No pairs configured. Add pairs above or random selection will be used.
-                  </p>
+                  <div className="flex items-start gap-2 rounded-lg bg-muted/60 border border-border px-3 py-2.5">
+                    <IconHeart className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <p className="text-sm text-muted-foreground">No pairs configured. Add pairs above or random selection will be used.</p>
+                  </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {pairs.map((pair, index) => (
-                      <div key={pair.id} className="flex items-center justify-between p-2 border rounded">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{index + 1}</Badge>
-                          <span>{pair.target_a}</span>
-                          <IconHeart className="size-4 text-pink-500" />
-                          <span>{pair.target_b}</span>
+                      <div key={pair.id} className="flex items-center justify-between px-3 py-2 border rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Badge variant="outline" className="text-xs h-5 w-5 p-0 flex items-center justify-center">{index + 1}</Badge>
+                          <span className="font-medium">{pair.target_a}</span>
+                          <IconHeart className="size-3.5 text-pink-500" />
+                          <span className="font-medium">{pair.target_b}</span>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon-sm"
                           onClick={() => handleRemovePair(pair.id)}
                           aria-label="Remove target pair"
+                          className="hover:text-destructive hover:bg-destructive/10"
                         >
-                          <IconTrash className="size-4 text-destructive" />
+                          <IconTrash className="size-4" />
                         </Button>
                       </div>
                     ))}

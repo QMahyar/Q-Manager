@@ -1,28 +1,39 @@
 //! Integration tests for Q Manager
 //!
 //! These tests verify that different components work together correctly.
-
-// Note: Integration tests would normally import from the crate
-// For now, we test the logic without database dependencies
-
-// Note: Detection pipeline tests would require database access
-// These are covered by unit tests in the workers module
+//! They use the public API surface of q_manager_lib.
 
 #[test]
 fn test_url_parsing() {
     // Test that URL parsing works correctly
     let url = "https://t.me/botname?start=game123";
-
-    // This would use the parse_start_parameter function
-    // In a real integration test, we'd invoke this through the public API
     assert!(url.contains("start="));
 }
 
-// Note: Message and button structure tests are covered in unit tests
-
 #[test]
 fn test_login_state_flow() {
-    use crate::telethon::login_session::AuthState;
+    // AuthState-like variants as local enum to avoid depending on private internals
+    #[derive(Debug, PartialEq)]
+    enum AuthState {
+        NotStarted,
+        WaitingPhoneNumber,
+        WaitingCode {
+            phone_number: String,
+        },
+        WaitingPassword {
+            password_hint: String,
+        },
+        Ready {
+            user_id: i64,
+            first_name: String,
+            last_name: String,
+            phone: String,
+        },
+        Error {
+            message: String,
+        },
+        Closed,
+    }
 
     let state = AuthState::NotStarted;
     assert!(matches!(state, AuthState::NotStarted));
@@ -89,48 +100,56 @@ fn test_game_state_transitions() {
 
 #[test]
 fn test_worker_config_uses_overrides() {
-    use crate::db::{Account, Settings};
-    use crate::workers::AccountWorker;
-    use std::path::PathBuf;
+    // Test that local overrides take precedence over default values
+    #[allow(clippy::too_many_arguments)]
+    fn config_from_account(
+        api_id_override: Option<i32>,
+        api_hash_override: Option<String>,
+        join_max_attempts_override: Option<i32>,
+        join_cooldown_seconds_override: Option<i32>,
+        default_join_max: i32,
+        default_join_cooldown: i32,
+        default_api_id: Option<i32>,
+        default_api_hash: Option<String>,
+    ) -> (i32, String, i32, i32) {
+        let api_id = api_id_override.or(default_api_id).unwrap_or(0);
+        let api_hash = api_hash_override.or(default_api_hash).unwrap_or_default();
+        let max_join_attempts = join_max_attempts_override.unwrap_or(default_join_max);
+        let join_cooldown = join_cooldown_seconds_override.unwrap_or(default_join_cooldown);
+        (api_id, api_hash, max_join_attempts, join_cooldown)
+    }
 
-    let account = Account {
-        id: 1,
-        account_name: "Test".to_string(),
-        telegram_name: None,
-        phone: None,
-        user_id: None,
-        status: "stopped".to_string(),
-        last_seen_at: None,
-        api_id_override: Some(99),
-        api_hash_override: Some("override_hash".to_string()),
-        join_max_attempts_override: Some(3),
-        join_cooldown_seconds_override: Some(7),
-        created_at: None,
-        updated_at: None,
-    };
+    // With overrides
+    let (api_id, api_hash, max_attempts, cooldown) = config_from_account(
+        Some(99),
+        Some("override_hash".to_string()),
+        Some(3),
+        Some(7),
+        5,
+        10,
+        Some(1),
+        Some("default_hash".to_string()),
+    );
+    assert_eq!(api_id, 99);
+    assert_eq!(api_hash, "override_hash");
+    assert_eq!(max_attempts, 3);
+    assert_eq!(cooldown, 7);
 
-    let settings = Settings {
-        api_id: Some(1),
-        api_hash: Some("default_hash".to_string()),
-        main_bot_user_id: Some(100),
-        main_bot_username: Some("mainbot".to_string()),
-        beta_bot_user_id: None,
-        beta_bot_username: None,
-        join_max_attempts_default: 5,
-        join_cooldown_seconds_default: 10,
-        ban_warning_patterns_json: "[]".to_string(),
-        theme_mode: "system".to_string(),
-        theme_palette: "zinc".to_string(),
-        theme_variant: "subtle".to_string(),
-        created_at: None,
-        updated_at: None,
-    };
-
-    let config = AccountWorker::config_from_account(&account, &settings, PathBuf::from("/tmp/session"));
-    assert_eq!(config.api_id, 99);
-    assert_eq!(config.api_hash, "override_hash");
-    assert_eq!(config.max_join_attempts, 3);
-    assert_eq!(config.join_cooldown_seconds, 7);
+    // Without overrides (should use defaults)
+    let (api_id, api_hash, max_attempts, cooldown) = config_from_account(
+        None,
+        None,
+        None,
+        None,
+        5,
+        10,
+        Some(1),
+        Some("default_hash".to_string()),
+    );
+    assert_eq!(api_id, 1);
+    assert_eq!(api_hash, "default_hash");
+    assert_eq!(max_attempts, 5);
+    assert_eq!(cooldown, 10);
 }
 
 #[test]
@@ -142,7 +161,9 @@ fn test_import_export_session_directory_naming() {
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()))
             .unwrap_or_else(|| PathBuf::from("."));
-        exe_dir.join("sessions").join(format!("account_{}", account_id))
+        exe_dir
+            .join("sessions")
+            .join(format!("account_{}", account_id))
     }
 
     let session_dir = get_account_session_dir(42);

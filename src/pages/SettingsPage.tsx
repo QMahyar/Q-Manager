@@ -1,11 +1,22 @@
 import { useState, useEffect } from "react";
 import { PageTransition } from "@/components/motion/PageTransition";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import {
   IconDeviceFloppy,
   IconPlus,
   IconTrash,
+  IconPalette,
+  IconKey,
+  IconRobot,
+  IconPlayerPlay,
+  IconClock,
+  IconShieldOff,
+  IconActivity,
+  IconSettings,
+  IconSun,
+  IconMoon,
+  IconDeviceDesktop,
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -20,7 +31,6 @@ import { Separator } from "@/components/ui/separator";
 const MotionCard = motion.create(Card);
 import { toast } from "@/components/ui/sonner";
 import { useSettingsData, useDelayDefaults, useDelayDefaultMutation, parseBanPatterns, useDiagnosticsSnapshot } from "@/hooks/useSettingsData";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SettingsUpdate, BanWarningPattern, ThemeMode, ThemePalette, ThemeVariant } from "@/lib/types";
 import { useTheme } from "@/components/theme-provider";
 import { HelpTooltip, helpContent } from "@/components/HelpTooltip";
@@ -80,7 +90,10 @@ export default function SettingsPage() {
   const isLoading = settingsQuery.isLoading;
   const actions = actionsQuery.data ?? [];
 
-  const { actionDelays, setActionDelays } = useDelayDefaults(actions);
+  const { actionDelays: serverActionDelays, isLoading: delaysLoading } = useDelayDefaults(actions);
+  // Local overrides for unsaved edits — merged on top of server values
+  const [localDelayOverrides, setLocalDelayOverrides] = useState<Record<number, { min: number; max: number }>>({});
+  const actionDelays = { ...serverActionDelays, ...localDelayOverrides };
   const delayDefaultMutation = useDelayDefaultMutation();
 
   // Update form when settings load
@@ -240,16 +253,16 @@ export default function SettingsPage() {
   const updateActionDelay = (actionId: number, field: "min" | "max", value: number) => {
     const currentDelay = actionDelays[actionId] || { min: 2, max: 8 };
     const newDelay = { ...currentDelay, [field]: value };
-    
-    setActionDelays((prev) => ({
+
+    setLocalDelayOverrides((prev: Record<number, { min: number; max: number }>) => ({
       ...prev,
       [actionId]: newDelay,
     }));
-    setDelayChanges((prev) => new Set(prev).add(actionId));
-    
+    setDelayChanges((prev: Set<number>) => new Set(prev).add(actionId));
+
     // Validate the delay
     const result = validateDelay(newDelay.min, newDelay.max);
-    setDelayErrors((prev) => ({
+    setDelayErrors((prev: Record<number, string>) => ({
       ...prev,
       [actionId]: result.error || "",
     }));
@@ -262,19 +275,25 @@ export default function SettingsPage() {
       // Validate before saving
       const result = validateDelay(delay.min, delay.max);
       if (!result.valid) {
-        setDelayErrors((prev) => ({ ...prev, [actionId]: result.error || "" }));
+        setDelayErrors((prev: Record<number, string>) => ({ ...prev, [actionId]: result.error || "" }));
         toast.error("Invalid delay range", {
           description: result.error,
         });
         return;
       }
       await delayDefaultMutation.mutateAsync({ actionId, min: delay.min, max: delay.max });
-      setDelayChanges((prev) => {
+      // Clear the local override — the server value will now reflect the saved one
+      setLocalDelayOverrides((prev: Record<number, { min: number; max: number }>) => {
+        const next = { ...prev };
+        delete next[actionId];
+        return next;
+      });
+      setDelayChanges((prev: Set<number>) => {
         const newSet = new Set(prev);
         newSet.delete(actionId);
         return newSet;
       });
-      setDelayErrors((prev) => ({ ...prev, [actionId]: "" }));
+      setDelayErrors((prev: Record<number, string>) => ({ ...prev, [actionId]: "" }));
       toast.success("Delay saved");
     }
   };
@@ -282,7 +301,7 @@ export default function SettingsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col">
-        <PageHeader title="Settings" description="Global configuration and defaults" />
+        <PageHeader title="Settings" description="Global configuration and defaults" icon={IconSettings} iconColor="text-rose-500" />
         <main className="flex-1 p-6 w-full max-w-3xl mx-auto">
           <div className="text-muted-foreground text-center py-12">Loading settings...</div>
         </main>
@@ -292,7 +311,7 @@ export default function SettingsPage() {
 
   return (
     <PageTransition className="min-h-screen flex flex-col">
-      <PageHeader title="Settings" description="Global configuration and defaults">
+      <PageHeader title="Settings" description="Global configuration and defaults" icon={IconSettings} iconColor="text-rose-500">
         <div className="flex items-center gap-2">
           {hasChanges && (
             <Badge variant="secondary">Unsaved changes</Badge>
@@ -312,99 +331,123 @@ export default function SettingsPage() {
           transition={{ duration: 0.3, delay: 0 }}
         >
           <CardHeader>
-            <CardTitle>Theme</CardTitle>
-            <CardDescription>
-              Choose your preferred color palette and light/dark mode.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="grid gap-2">
-                <Label>Mode</Label>
-                <Select
-                  value={themeMode}
-                  onValueChange={(value) => {
-                    const next = value as ThemeMode;
-                    setThemeMode(next);
-                    setTheme(next);
-                    markChanged();
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="system">System</SelectItem>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-violet-500/10">
+                <IconPalette className="size-4 text-violet-500" />
               </div>
-              <div className="grid gap-2">
-                <Label>Palette</Label>
-                <Select
-                  value={themePalette}
-                  onValueChange={(value) => {
-                    const next = value as ThemePalette;
-                    setThemePalette(next);
-                    setPalette(next);
-                    markChanged();
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="zinc">Zinc</SelectItem>
-                    <SelectItem value="slate">Slate</SelectItem>
-                    <SelectItem value="gray">Gray</SelectItem>
-                    <SelectItem value="stone">Stone</SelectItem>
-                    <SelectItem value="sky">Sky</SelectItem>
-                    <SelectItem value="indigo">Indigo</SelectItem>
-                    <SelectItem value="emerald">Emerald</SelectItem>
-                    <SelectItem value="rose">Rose</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Intensity</Label>
-                <Select
-                  value={themeVariant}
-                  onValueChange={(value) => {
-                    const next = value as ThemeVariant;
-                    setThemeVariant(next);
-                    setVariant(next);
-                    markChanged();
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="subtle">Subtle</SelectItem>
-                    <SelectItem value="vibrant">Vibrant</SelectItem>
-                    <SelectItem value="contrast">High contrast</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div>
+                <CardTitle>Theme</CardTitle>
+                <CardDescription>
+                  Choose your preferred color palette and light/dark mode.
+                </CardDescription>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1">
-                <span className="size-2 rounded-full bg-primary" />
-                Primary
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1">
-                <span className="size-2 rounded-full bg-success" />
-                Success
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1">
-                <span className="size-2 rounded-full bg-warning" />
-                Warning
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1">
-                <span className="size-2 rounded-full bg-destructive" />
-                Destructive
-              </span>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Mode picker — icon buttons */}
+            <div className="grid gap-2">
+              <Label className="text-xs text-muted-foreground">Mode</Label>
+              <div className="flex gap-2">
+                {(
+                  [
+                    { value: "system", label: "System", Icon: IconDeviceDesktop },
+                    { value: "light",  label: "Light",  Icon: IconSun },
+                    { value: "dark",   label: "Dark",   Icon: IconMoon },
+                  ] as const
+                ).map(({ value, label, Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => { setThemeMode(value); setTheme(value); markChanged(); }}
+                    className={`flex-1 flex flex-col items-center gap-1.5 rounded-lg border py-3 px-2 text-xs font-medium transition-all
+                      ${themeMode === value
+                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                        : "border-border bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                  >
+                    <Icon className="size-4" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Palette picker — color swatches */}
+            <div className="grid gap-2">
+              <Label className="text-xs text-muted-foreground">Palette</Label>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { value: "zinc",    label: "Zinc",    color: "bg-zinc-500" },
+                    { value: "slate",   label: "Slate",   color: "bg-slate-500" },
+                    { value: "gray",    label: "Gray",    color: "bg-gray-500" },
+                    { value: "stone",   label: "Stone",   color: "bg-stone-500" },
+                    { value: "sky",     label: "Sky",     color: "bg-sky-500" },
+                    { value: "indigo",  label: "Indigo",  color: "bg-indigo-500" },
+                    { value: "emerald", label: "Emerald", color: "bg-emerald-500" },
+                    { value: "rose",    label: "Rose",    color: "bg-rose-500" },
+                  ] as const
+                ).map(({ value, label, color }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => { setThemePalette(value); setPalette(value); markChanged(); }}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all
+                      ${themePalette === value
+                        ? "border-primary bg-primary/10 text-primary shadow-sm ring-1 ring-primary/30"
+                        : "border-border bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    title={label}
+                  >
+                    <span className={`size-3 rounded-full ${color} shrink-0`} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Intensity picker */}
+            <div className="grid gap-2">
+              <Label className="text-xs text-muted-foreground">Intensity</Label>
+              <div className="flex gap-2">
+                {(
+                  [
+                    { value: "subtle",   label: "Subtle",        desc: "Soft, muted tones" },
+                    { value: "vibrant",  label: "Vibrant",       desc: "Richer, saturated" },
+                    { value: "contrast", label: "High Contrast", desc: "Maximum legibility" },
+                  ] as const
+                ).map(({ value, label, desc }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => { setThemeVariant(value); setVariant(value); markChanged(); }}
+                    className={`flex-1 flex flex-col gap-0.5 rounded-lg border py-2.5 px-3 text-left transition-all
+                      ${themeVariant === value
+                        ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30"
+                        : "border-border bg-muted/30 hover:bg-muted"
+                      }`}
+                  >
+                    <span className={`text-xs font-medium ${themeVariant === value ? "text-primary" : "text-foreground"}`}>{label}</span>
+                    <span className="text-[10px] text-muted-foreground">{desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live preview swatches */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {[
+                { label: "Primary",     cls: "bg-primary" },
+                { label: "Success",     cls: "bg-success" },
+                { label: "Warning",     cls: "bg-warning" },
+                { label: "Destructive", cls: "bg-destructive" },
+                { label: "Muted",       cls: "bg-muted-foreground" },
+              ].map(({ label, cls }) => (
+                <span key={label} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground">
+                  <span className={`size-2.5 rounded-full ${cls}`} />
+                  {label}
+                </span>
+              ))}
             </div>
           </CardContent>
         </MotionCard>
@@ -416,59 +459,54 @@ export default function SettingsPage() {
           transition={{ duration: 0.3, delay: 0.08 }}
         >
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <CardTitle>Telegram API Credentials</CardTitle>
-              <HelpTooltip content={helpContent.apiCredentials} />
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-sky-500/10">
+                <IconKey className="size-4 text-sky-500" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Telegram API Credentials</CardTitle>
+                  <HelpTooltip content={helpContent.apiCredentials} />
+                </div>
+                <CardDescription>
+                  Get your API ID and Hash from{" "}
+                  <a
+                    href="https://my.telegram.org"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-medium"
+                  >
+                    my.telegram.org
+                  </a>
+                </CardDescription>
+              </div>
             </div>
-            <CardDescription>
-              Get your API ID and Hash from{" "}
-              <a
-                href="https://my.telegram.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                my.telegram.org
-              </a>
-            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="apiId">API ID</Label>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="apiId" className="text-xs text-muted-foreground">API ID</Label>
                 <Input
                   id="apiId"
                   type="number"
                   value={apiId}
-                  onChange={(e) => {
-                    setApiId(e.target.value);
-                    validateApiIdField(e.target.value);
-                    markChanged();
-                  }}
+                  onChange={(e) => { setApiId(e.target.value); validateApiIdField(e.target.value); markChanged(); }}
                   placeholder="12345678"
                   className={errors.apiId ? "border-destructive" : ""}
                 />
-                {errors.apiId && (
-                  <p className="text-xs text-destructive">{errors.apiId}</p>
-                )}
+                {errors.apiId && <p className="text-xs text-destructive">{errors.apiId}</p>}
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="apiHash">API Hash</Label>
+              <div className="grid gap-1.5">
+                <Label htmlFor="apiHash" className="text-xs text-muted-foreground">API Hash</Label>
                 <Input
                   id="apiHash"
                   type="password"
                   value={apiHash}
-                  onChange={(e) => {
-                    setApiHash(e.target.value);
-                    validateApiHashField(e.target.value);
-                    markChanged();
-                  }}
+                  onChange={(e) => { setApiHash(e.target.value); validateApiHashField(e.target.value); markChanged(); }}
                   placeholder="abcdef1234567890..."
                   className={errors.apiHash ? "border-destructive" : ""}
                 />
-                {errors.apiHash && (
-                  <p className="text-xs text-destructive">{errors.apiHash}</p>
-                )}
+                {errors.apiHash && <p className="text-xs text-destructive">{errors.apiHash}</p>}
               </div>
             </div>
           </CardContent>
@@ -481,10 +519,17 @@ export default function SettingsPage() {
           transition={{ duration: 0.3, delay: 0.16 }}
         >
           <CardHeader>
-            <CardTitle>Moderator Bots</CardTitle>
-            <CardDescription>
-              Configure the Werewolf game moderator bots to monitor
-            </CardDescription>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-500/10">
+                <IconRobot className="size-4 text-emerald-500" />
+              </div>
+              <div>
+                <CardTitle>Moderator Bots</CardTitle>
+                <CardDescription>
+                  Configure the Werewolf game moderator bots to monitor
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
@@ -570,13 +615,20 @@ export default function SettingsPage() {
           transition={{ duration: 0.3, delay: 0.24 }}
         >
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <CardTitle>Join Rules (Default)</CardTitle>
-              <HelpTooltip content={helpContent.joinRules} />
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <IconPlayerPlay className="size-4 text-orange-500" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Join Rules (Default)</CardTitle>
+                  <HelpTooltip content={helpContent.joinRules} />
+                </div>
+                <CardDescription>
+                  Default settings for automatic game joining. Can be overridden per account.
+                </CardDescription>
+              </div>
             </div>
-            <CardDescription>
-              Default settings for automatic game joining. Can be overridden per account.
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -633,17 +685,24 @@ export default function SettingsPage() {
             transition={{ duration: 0.3, delay: 0.32 }}
           >
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <CardTitle>Default Action Delays</CardTitle>
-                <HelpTooltip content={helpContent.delays} />
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10">
+                  <IconClock className="size-4 text-amber-500" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle>Default Action Delays</CardTitle>
+                    <HelpTooltip content={helpContent.delays} />
+                  </div>
+                  <CardDescription>
+                    Set the default delay range (in seconds) before clicking for each action.
+                    Can be overridden per account in Targets page.
+                  </CardDescription>
+                </div>
               </div>
-              <CardDescription>
-                Set the default delay range (in seconds) before clicking for each action.
-                Can be overridden per account in Targets page.
-              </CardDescription>
             </CardHeader>
             <CardContent>
-              {Object.keys(actionDelays).length === 0 && actions.length > 0 ? (
+              {delaysLoading && actions.length > 0 ? (
                 <div className="text-center py-4 text-muted-foreground">
                   Loading delay settings...
                 </div>
@@ -718,46 +777,37 @@ export default function SettingsPage() {
           </MotionCard>
         )}
 
-        {/* Diagnostics */}
+        {/* Diagnostics — inline compact row */}
         <MotionCard
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.32 }}
         >
-          <CardHeader>
-            <CardTitle>Diagnostics</CardTitle>
-            <CardDescription>
-              Snapshot of worker status and uptime for quick health checks.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {diagnosticsQuery.isLoading ? (
-              <div className="text-muted-foreground text-sm">Loading diagnostics...</div>
-            ) : diagnosticsQuery.isError ? (
-              <div className="text-destructive text-sm">Failed to load diagnostics.</div>
-            ) : diagnosticsQuery.data ? (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex flex-col gap-1">
-                  <span className="text-muted-foreground">Uptime</span>
-                  <span>{Math.floor(diagnosticsQuery.data.uptime_ms / 1000)}s</span>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-sky-500/10">
+                  <IconActivity className="size-4 text-sky-500" />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-muted-foreground">Workers</span>
-                  <span>{diagnosticsQuery.data.running_workers} running / {diagnosticsQuery.data.total_workers} total</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-muted-foreground">Last Updated</span>
-                  <span>{new Date(diagnosticsQuery.data.timestamp_ms).toLocaleString()}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-muted-foreground">Status</span>
-                  <span>{diagnosticsQuery.data.running_workers > 0 ? "Active" : "Idle"}</span>
-                </div>
+                <CardTitle>Diagnostics</CardTitle>
               </div>
-            ) : (
-              <div className="text-muted-foreground text-sm">No diagnostics available.</div>
-            )}
-          </CardContent>
+              {diagnosticsQuery.data && (
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className={`size-1.5 rounded-full ${diagnosticsQuery.data.running_workers > 0 ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+                    <span className="font-medium text-foreground">{diagnosticsQuery.data.running_workers}</span>
+                    <span>/ {diagnosticsQuery.data.total_workers} workers</span>
+                  </span>
+                  <span className="text-border">|</span>
+                  <span>Uptime: <span className="font-medium text-foreground">{Math.floor(diagnosticsQuery.data.uptime_ms / 1000)}s</span></span>
+                  <span className="text-border">|</span>
+                  <span>{diagnosticsQuery.data.running_workers > 0 ? "🟢 Active" : "⚪ Idle"}</span>
+                </div>
+              )}
+              {diagnosticsQuery.isLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
+              {diagnosticsQuery.isError && <span className="text-xs text-destructive">Failed to load</span>}
+            </div>
+          </CardHeader>
         </MotionCard>
 
         {/* Ban Warning Patterns */}
@@ -767,14 +817,21 @@ export default function SettingsPage() {
           transition={{ duration: 0.3, delay: 0.32 }}
         >
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <CardTitle>Ban Warning Patterns</CardTitle>
-              <HelpTooltip content={helpContent.banWarnings} />
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <IconShieldOff className="size-4 text-destructive" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Ban Warning Patterns</CardTitle>
+                  <HelpTooltip content={helpContent.banWarnings} />
+                </div>
+                <CardDescription>
+                  If any of these patterns are detected in messages from the moderator bot,
+                  the account will stop trying to join the game. This helps prevent bans.
+                </CardDescription>
+              </div>
             </div>
-            <CardDescription>
-              If any of these patterns are detected in messages from the moderator bot,
-              the account will stop trying to join the game. This helps prevent bans.
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Existing patterns */}
@@ -862,20 +919,29 @@ export default function SettingsPage() {
           </CardContent>
         </MotionCard>
 
-        {/* Save reminder */}
-        {hasChanges && (
-          <div className="fixed bottom-6 right-6 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-3">
-            <span>You have unsaved changes</span>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleSave}
-              disabled={saveMutation.isPending}
+        {/* Save reminder — animated floating pill */}
+        <AnimatePresence>
+          {hasChanges && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 420, damping: 28 }}
+              className="fixed bottom-6 right-6 z-50 bg-background/95 border border-amber-500/30 shadow-2xl shadow-amber-500/10 rounded-xl px-4 py-3 flex items-center gap-3 backdrop-blur-md"
             >
-              Save Now
-            </Button>
-          </div>
-        )}
+              <motion.div
+                className="size-2 rounded-full bg-amber-500"
+                animate={{ scale: [1, 1.4, 1], opacity: [1, 0.6, 1] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <span className="text-sm font-medium text-foreground">Unsaved changes</span>
+              <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} className="h-7 text-xs">
+                <IconDeviceFloppy className="size-3.5 mr-1.5" />
+                {saveMutation.isPending ? "Saving..." : "Save Now"}
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </PageTransition>
   );

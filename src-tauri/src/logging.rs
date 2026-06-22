@@ -2,8 +2,6 @@
 //!
 //! Provides consistent logging with context, filtering, and optional file output.
 
-#![allow(dead_code)]
-
 use log::{Level, LevelFilter, Metadata, Record};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -61,6 +59,7 @@ pub fn init() -> Result<(), log::SetLoggerError> {
 }
 
 /// Enable or disable verbose mode
+#[allow(dead_code)]
 pub fn set_verbose(enabled: bool) {
     VERBOSE_MODE.store(enabled, Ordering::Relaxed);
     if enabled {
@@ -69,6 +68,7 @@ pub fn set_verbose(enabled: bool) {
 }
 
 /// Check if verbose mode is enabled
+#[allow(dead_code)]
 pub fn is_verbose() -> bool {
     VERBOSE_MODE.load(Ordering::Relaxed)
 }
@@ -114,12 +114,14 @@ macro_rules! log_telethon {
 }
 
 /// Structured log context for complex operations
+#[allow(dead_code)]
 pub struct LogContext {
     pub module: &'static str,
     pub account_id: Option<i64>,
     pub operation: Option<&'static str>,
 }
 
+#[allow(dead_code)]
 impl LogContext {
     pub fn new(module: &'static str) -> Self {
         LogContext {

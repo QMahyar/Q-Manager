@@ -8,6 +8,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { toastError } from "@/lib/toast-utils";
 import { eventLogger, uiLogger } from "@/lib/logger";
 import { IPC_EVENTS } from "@/lib/ipc";
+import { Account } from "@/lib/types";
 
 // Debounce configuration
 const STATUS_DEBOUNCE_MS = 150; // Debounce status updates to prevent UI thrashing
@@ -117,7 +118,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
             clearTimeout(queryInvalidateRef.current);
           }
           queryInvalidateRef.current = setTimeout(() => {
-            queryClient.setQueryData(queryKeys.accounts(), (current) => {
+            queryClient.setQueryData<Account[]>(queryKeys.accounts(), (current) => {
               if (!current) return current;
               return current.map((account) => {
                 const update = pendingStatusUpdates.current.get(account.id);

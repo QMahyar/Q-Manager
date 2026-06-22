@@ -13,6 +13,26 @@ interface AnimatedCardProps {
   interactive?: boolean; // Enable hover/tap effects
 }
 
+const cardVariants = {
+  hidden: {
+    opacity: 0,
+    y: 18,
+    scale: 0.97,
+  },
+  visible: (index: number) => ({
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      type: "spring" as const,
+      stiffness: 400,
+      damping: 28,
+      mass: 0.7,
+      delay: index * 0.055,
+    },
+  }),
+};
+
 export function AnimatedCard({
   children,
   className,
@@ -22,19 +42,24 @@ export function AnimatedCard({
 }: AnimatedCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.3,
-        delay: index * 0.05, // Stagger effect
-        ease: "easeOut",
-      }}
-      whileHover={interactive ? { scale: 1.02, y: -2 } : undefined}
-      whileTap={interactive ? { scale: 0.98 } : undefined}
+      variants={cardVariants}
+      initial="hidden"
+      animate="visible"
+      custom={index}
+      whileHover={interactive ? {
+        scale: 1.025,
+        y: -3,
+        transition: { type: "spring", stiffness: 500, damping: 25, mass: 0.5 },
+      } : undefined}
+      whileTap={interactive ? {
+        scale: 0.97,
+        transition: { type: "spring", stiffness: 600, damping: 30 },
+      } : undefined}
       onClick={onClick}
+      style={{ willChange: "transform" }}
       className={cn(
-        "cursor-pointer transition-shadow",
-        interactive && "hover:shadow-lg",
+        "cursor-pointer",
+        interactive && "hover:shadow-lg hover:shadow-black/[0.06] dark:hover:shadow-black/20",
         className
       )}
     >

@@ -249,6 +249,7 @@ impl From<&AppError> for ErrorResponse {
 pub type AppResult<T> = Result<T, AppError>;
 
 /// Helper trait for adding context to errors
+#[allow(dead_code)]
 pub trait ResultExt<T> {
     fn with_context<F, S>(self, f: F) -> AppResult<T>
     where
@@ -256,6 +257,7 @@ pub trait ResultExt<T> {
         S: Into<String>;
 }
 
+#[allow(dead_code)]
 impl<T, E: Into<AppError>> ResultExt<T> for Result<T, E> {
     fn with_context<F, S>(self, f: F) -> AppResult<T>
     where

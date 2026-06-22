@@ -46,18 +46,15 @@ fn emit_login_progress(token: &str, step: &str, message: &str, progress: u8) {
 
 /// Generate a unique session token
 fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("session_{}", timestamp)
+    format!("session_{}", uuid::Uuid::new_v4().simple())
 }
 
 fn check_rate_limit(token: &str) -> Result<(), crate::commands::ErrorResponse> {
     let mut map = LOGIN_RATE_LIMIT
         .lock()
         .map_err(|_| error_response("Rate limiter unavailable"))?;
+    // Prune stale entries to prevent unbounded growth
+    map.retain(|_, last: &mut Instant| last.elapsed() < Duration::from_secs(LOGIN_RATE_LIMIT_SECONDS * 60));
     if let Some(last) = map.get(token) {
         if last.elapsed() < Duration::from_secs(LOGIN_RATE_LIMIT_SECONDS) {
             return Err(error_response("Please wait a moment before retrying."));
@@ -69,12 +66,7 @@ fn check_rate_limit(token: &str) -> Result<(), crate::commands::ErrorResponse> {
 
 /// Get the sessions directory
 fn get_sessions_dir() -> PathBuf {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    exe_dir.join("sessions")
+    crate::utils::fs::get_sessions_dir()
 }
 
 /// Check if Telethon worker is available
@@ -123,8 +115,14 @@ pub async fn login_start(
         .join("telethon.session")
         .to_string_lossy()
         .to_string();
-    let client = telethon::TelethonClient::spawn(api_id, &api_hash, &session_path)
-        .map_err(error_response)?;
+    let client = match telethon::TelethonClient::spawn(api_id, &api_hash, &session_path) {
+        Ok(c) => c,
+        Err(e) => {
+            // Clean up the temp directory on spawn failure
+            let _ = std::fs::remove_dir_all(&session_dir);
+            return Err(error_response(e));
+        }
+    };
 
     emit_login_progress(&token, "init", "Worker ready", 90);
 

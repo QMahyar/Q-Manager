@@ -7,6 +7,7 @@ import { RegexTestDialog, RegexValidationBadge } from "@/components/RegexTestDia
 import { HelpTooltip, helpContent } from "@/components/HelpTooltip";
 import { RegexHelpDialog } from "@/components/RegexHelpDialog";
 import type { PhasePattern } from "@/lib/types";
+import { IconFlask, IconHelp, IconAlertTriangle } from "@tabler/icons-react";
 
 interface PhasePatternDialogsProps {
   addPatternOpen: boolean;
@@ -37,7 +38,6 @@ export function PhasePatternDialogs({
   addPatternOpen,
   editPatternOpen,
   patternToDelete,
-  patternToEdit,
   newPattern,
   isRegex,
   priority,
@@ -84,18 +84,18 @@ export function PhasePatternDialogs({
                   isRegex={isRegex}
                   trigger={
                     <Button variant="ghost" size="icon-sm" title="Test pattern" aria-label="Test pattern">
-                      Test
+                      <IconFlask className="size-4" />
                     </Button>
                   }
                 />
                 <HelpTooltip content={helpContent.regex} />
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1">
                   <Label>Use Regex</Label>
-                  <RegexHelpDialog trigger={<Button variant="ghost" size="icon-sm" aria-label="Regex help">?</Button>} />
+                  <RegexHelpDialog trigger={<Button variant="ghost" size="icon-sm" aria-label="Regex help"><IconHelp className="size-4" /></Button>} />
                 </div>
                 <p className="text-xs text-muted-foreground">Enable regular expression matching</p>
               </div>
@@ -155,18 +155,18 @@ export function PhasePatternDialogs({
                   isRegex={editIsRegex}
                   trigger={
                     <Button variant="ghost" size="icon-sm" title="Test pattern" aria-label="Test pattern">
-                      Test
+                      <IconFlask className="size-4" />
                     </Button>
                   }
                 />
                 <HelpTooltip content={helpContent.regex} />
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1">
                   <Label>Use Regex</Label>
-                  <RegexHelpDialog trigger={<Button variant="ghost" size="icon-sm" aria-label="Regex help">?</Button>} />
+                  <RegexHelpDialog trigger={<Button variant="ghost" size="icon-sm" aria-label="Regex help"><IconHelp className="size-4" /></Button>} />
                 </div>
                 <p className="text-xs text-muted-foreground">Enable regular expression matching</p>
               </div>
@@ -205,17 +205,23 @@ export function PhasePatternDialogs({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Pattern</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this pattern? This action cannot be undone.
-            </DialogDescription>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
-          <div className="py-4 font-mono text-sm">{patternToDelete?.pattern}</div>
+          <div className="py-2 space-y-3">
+            <div className="flex items-start gap-3 rounded-lg bg-destructive/10 border border-destructive/20 p-3">
+              <IconAlertTriangle className="size-4 text-destructive mt-0.5 shrink-0" />
+              <p className="text-sm text-destructive">You are about to permanently delete this pattern.</p>
+            </div>
+            <div className="rounded-md bg-muted px-3 py-2 font-mono text-sm text-foreground border border-border">
+              {patternToDelete?.pattern}
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => onDeletePatternChange(null)}>
               Cancel
             </Button>
             <Button variant="destructive" onClick={onDeletePattern}>
-              Delete
+              Delete Pattern
             </Button>
           </DialogFooter>
         </DialogContent>

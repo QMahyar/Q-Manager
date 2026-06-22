@@ -57,17 +57,21 @@ impl<T: Clone> CachedItem<T> {
     }
 }
 
+/// Versioned cache entry - stores the version alongside the cached data to
+/// eliminate the TOCTOU race between checking the version and checking the data.
+#[derive(Debug, Clone)]
+struct VersionedCache<T> {
+    version: i64,
+    item: CachedItem<Vec<T>>,
+}
+
 /// Worker-level cache for detection pipeline data
 /// Uses sync Mutex for simplicity (cache operations are fast)
 pub struct WorkerCache {
-    // Pattern caches
-    phase_patterns: Mutex<Option<CachedItem<Vec<PhasePatternWithInfo>>>>,
-    actions: Mutex<Option<CachedItem<Vec<Action>>>>,
-    action_patterns: Mutex<Option<CachedItem<Vec<ActionPattern>>>>,
-
-    // Pattern cache versions (for scoped reloads)
-    phase_version: Mutex<Option<i64>>,
-    action_version: Mutex<Option<i64>>,
+    // Pattern caches (version embedded to avoid TOCTOU race)
+    phase_patterns: Mutex<Option<VersionedCache<PhasePatternWithInfo>>>,
+    actions: Mutex<Option<VersionedCache<Action>>>,
+    action_patterns: Mutex<Option<VersionedCache<ActionPattern>>>,
 
     // Per-account action config cache
     action_configs: Mutex<HashMap<(i64, i64), CachedItem<ActionConfig>>>,
@@ -84,12 +88,43 @@ impl WorkerCache {
             phase_patterns: Mutex::new(None),
             actions: Mutex::new(None),
             action_patterns: Mutex::new(None),
-            phase_version: Mutex::new(None),
-            action_version: Mutex::new(None),
             action_configs: Mutex::new(HashMap::new()),
             hits: std::sync::atomic::AtomicU64::new(0),
             misses: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// Check cache under a single lock (version + TTL), eliminating TOCTOU race.
+    fn get_versioned<T: Clone>(
+        &self,
+        cache: &Mutex<Option<VersionedCache<T>>>,
+        version: i64,
+    ) -> Result<Option<Vec<T>>, String> {
+        let guard = cache.lock().map_err(|e| e.to_string())?;
+        if let Some(ref vc) = *guard {
+            if vc.version == version {
+                if let Some(data) = vc.item.get_if_valid() {
+                    self.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    return Ok(Some(data.clone()));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Store data with version under a single lock.
+    fn set_versioned<T: Clone>(
+        &self,
+        cache: &Mutex<Option<VersionedCache<T>>>,
+        version: i64,
+        data: Vec<T>,
+    ) -> Result<(), String> {
+        let mut guard = cache.lock().map_err(|e| e.to_string())?;
+        *guard = Some(VersionedCache {
+            version,
+            item: CachedItem::new(data, DEFAULT_CACHE_TTL),
+        });
+        Ok(())
     }
 
     /// Get cached phase patterns or load from DB (version-aware)
@@ -101,66 +136,13 @@ impl WorkerCache {
     where
         F: FnOnce() -> Result<Vec<PhasePatternWithInfo>, String>,
     {
-        if let Some(data) = self.get_cached_with_version(&self.phase_patterns, &self.phase_version, version)? {
+        if let Some(data) = self.get_versioned(&self.phase_patterns, version)? {
             return Ok(data);
         }
-
-        self.misses
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
-        self.set_cached_with_version(&self.phase_patterns, &self.phase_version, version, data.clone())?;
+        self.set_versioned(&self.phase_patterns, version, data.clone())?;
         Ok(data)
-    }
-
-    fn get_cached<T: Clone>(
-        &self,
-        cache: &Mutex<Option<CachedItem<Vec<T>>>>,
-    ) -> Result<Option<Vec<T>>, String> {
-        let cache = cache.lock().map_err(|e| e.to_string())?;
-        if let Some(ref item) = *cache {
-            if let Some(data) = item.get_if_valid() {
-                self.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                return Ok(Some(data.clone()));
-            }
-        }
-        Ok(None)
-    }
-
-    fn set_cached<T: Clone>(
-        &self,
-        cache: &Mutex<Option<CachedItem<Vec<T>>>>,
-        data: Vec<T>,
-    ) -> Result<(), String> {
-        let mut cache = cache.lock().map_err(|e| e.to_string())?;
-        *cache = Some(CachedItem::new(data, DEFAULT_CACHE_TTL));
-        Ok(())
-    }
-
-    fn get_cached_with_version<T: Clone>(
-        &self,
-        cache: &Mutex<Option<CachedItem<Vec<T>>>>,
-        version_cache: &Mutex<Option<i64>>,
-        version: i64,
-    ) -> Result<Option<Vec<T>>, String> {
-        let version_guard = version_cache.lock().map_err(|e| e.to_string())?;
-        if version_guard.map(|v| v == version).unwrap_or(false) {
-            return self.get_cached(cache);
-        }
-        Ok(None)
-    }
-
-    fn set_cached_with_version<T: Clone>(
-        &self,
-        cache: &Mutex<Option<CachedItem<Vec<T>>>>,
-        version_cache: &Mutex<Option<i64>>,
-        version: i64,
-        data: Vec<T>,
-    ) -> Result<(), String> {
-        {
-            let mut version_guard = version_cache.lock().map_err(|e| e.to_string())?;
-            *version_guard = Some(version);
-        }
-        self.set_cached(cache, data)
     }
 
     /// Get cached actions or load from DB (version-aware)
@@ -168,14 +150,12 @@ impl WorkerCache {
     where
         F: FnOnce() -> Result<Vec<Action>, String>,
     {
-        if let Some(data) = self.get_cached_with_version(&self.actions, &self.action_version, version)? {
+        if let Some(data) = self.get_versioned(&self.actions, version)? {
             return Ok(data);
         }
-
-        self.misses
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
-        self.set_cached_with_version(&self.actions, &self.action_version, version, data.clone())?;
+        self.set_versioned(&self.actions, version, data.clone())?;
         Ok(data)
     }
 
@@ -184,14 +164,12 @@ impl WorkerCache {
     where
         F: FnOnce() -> Result<Vec<ActionPattern>, String>,
     {
-        if let Some(data) = self.get_cached_with_version(&self.action_patterns, &self.action_version, version)? {
+        if let Some(data) = self.get_versioned(&self.action_patterns, version)? {
             return Ok(data);
         }
-
-        self.misses
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
-        self.set_cached_with_version(&self.action_patterns, &self.action_version, version, data.clone())?;
+        self.set_versioned(&self.action_patterns, version, data.clone())?;
         Ok(data)
     }
 
@@ -204,12 +182,6 @@ impl WorkerCache {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_patterns.lock() {
-            *cache = None;
-        }
-        if let Ok(mut cache) = self.phase_version.lock() {
-            *cache = None;
-        }
-        if let Ok(mut cache) = self.action_version.lock() {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_configs.lock() {
@@ -227,12 +199,6 @@ impl WorkerCache {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_patterns.lock() {
-            *cache = None;
-        }
-        if let Ok(mut cache) = self.phase_version.lock() {
-            *cache = None;
-        }
-        if let Ok(mut cache) = self.action_version.lock() {
             *cache = None;
         }
         if let Ok(mut cache) = self.action_configs.lock() {
@@ -274,7 +240,7 @@ impl WorkerCache {
         self.misses
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let data = loader()?;
-        self.set_cached_config(account_id, action_id, data.clone())?;
+        self.set_action_config(account_id, action_id, data.clone())?;
         Ok(data)
     }
 
@@ -294,20 +260,6 @@ impl WorkerCache {
     }
 
     pub fn set_action_config(
-        &self,
-        account_id: i64,
-        action_id: i64,
-        data: ActionConfig,
-    ) -> Result<(), String> {
-        let mut cache = self.action_configs.lock().map_err(|e| e.to_string())?;
-        cache.insert(
-            (account_id, action_id),
-            CachedItem::new(data, DEFAULT_CACHE_TTL),
-        );
-        Ok(())
-    }
-
-    fn set_cached_config(
         &self,
         account_id: i64,
         action_id: i64,

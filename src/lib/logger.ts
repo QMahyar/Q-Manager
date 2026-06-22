@@ -162,7 +162,8 @@ export const logger: Logger = {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
     
-    logger.error(message, {
+    // Call this.error via the logger object so child loggers override it correctly
+    this.error(message, {
       ...context,
       data: {
         ...context?.data,
@@ -178,17 +179,40 @@ export const logger: Logger = {
   child(defaultContext: LogContext): Logger {
     const parentLogger = logger;
     return {
-      debug: (message: string, context?: LogContext) => 
-        parentLogger.debug(message, { ...defaultContext, ...context }),
-      info: (message: string, context?: LogContext) => 
-        parentLogger.info(message, { ...defaultContext, ...context }),
-      warn: (message: string, context?: LogContext) => 
-        parentLogger.warn(message, { ...defaultContext, ...context }),
-      error: (message: string, context?: LogContext) => 
-        parentLogger.error(message, { ...defaultContext, ...context }),
-      logError: (error: unknown, message: string, context?: LogContext) => 
-        parentLogger.logError(error, message, { ...defaultContext, ...context }),
-      child: (childContext: LogContext) => 
+      debug: (message: string, context?: LogContext) =>
+        parentLogger.debug(message, {
+          ...defaultContext,
+          ...context,
+          data: { ...defaultContext?.data, ...context?.data },
+        }),
+      info: (message: string, context?: LogContext) =>
+        parentLogger.info(message, {
+          ...defaultContext,
+          ...context,
+          data: { ...defaultContext?.data, ...context?.data },
+        }),
+      warn: (message: string, context?: LogContext) =>
+        parentLogger.warn(message, {
+          ...defaultContext,
+          ...context,
+          data: { ...defaultContext?.data, ...context?.data },
+        }),
+      error: (message: string, context?: LogContext) =>
+        parentLogger.error(message, {
+          ...defaultContext,
+          ...context,
+          data: { ...defaultContext?.data, ...context?.data },
+        }),
+      logError(error: unknown, message: string, context?: LogContext) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        parentLogger.error(message, {
+          ...defaultContext,
+          ...context,
+          data: { ...defaultContext?.data, ...context?.data, errorMessage, errorStack },
+        });
+      },
+      child: (childContext: LogContext) =>
         parentLogger.child({ ...defaultContext, ...childContext }),
     };
   },

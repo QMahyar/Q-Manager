@@ -17,9 +17,4 @@ mod manager;
 mod account_worker_tests;
 
 pub use account_worker::{AccountWorker, WorkerConfig};
-#[allow(unused_imports)]
-pub use cache::{shared_cache, CacheStats, WorkerCache};
-#[allow(unused_imports)]
-pub use detection::DetectionPipeline;
-#[allow(unused_imports)]
-pub use manager::{WorkerManager, WORKER_MANAGER};
+pub use manager::WORKER_MANAGER;

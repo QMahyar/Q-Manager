@@ -3,7 +3,7 @@
 use crate::commands::{error_response, CommandResult};
 use crate::db::{self, Action, ActionCreate, ActionPattern};
 use crate::validation::{
-    validate_button_type, validate_display_name, validate_pattern, validate_priority,
+    validate_action_name, validate_button_type, validate_pattern, validate_priority,
 };
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ pub fn actions_list() -> CommandResult<Vec<Action>> {
 #[command]
 pub fn action_create(payload: ActionCreate) -> CommandResult<Action> {
     // Validate inputs
-    validate_display_name(&payload.name).map_err(error_response)?;
+    validate_action_name(&payload.name).map_err(error_response)?;
     validate_button_type(&payload.button_type).map_err(error_response)?;
 
     let conn = db::get_conn().map_err(error_response)?;
@@ -54,7 +54,7 @@ pub struct ActionUpdate {
 #[command]
 pub fn action_update(payload: ActionUpdate) -> CommandResult<Action> {
     // Validate inputs
-    validate_display_name(&payload.name).map_err(error_response)?;
+    validate_action_name(&payload.name).map_err(error_response)?;
     validate_button_type(&payload.button_type).map_err(error_response)?;
 
     let conn = db::get_conn().map_err(error_response)?;

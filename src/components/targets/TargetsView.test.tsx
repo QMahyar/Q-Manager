@@ -8,13 +8,17 @@ const baseAccounts: Account[] = [
   {
     id: 1,
     account_name: "Alpha",
+    telegram_name: null,
     phone: "+1000000000",
     user_id: 100,
     status: "stopped",
+    last_seen_at: null,
+    api_id_override: null,
+    api_hash_override: null,
+    join_max_attempts_override: null,
+    join_cooldown_seconds_override: null,
     created_at: "2024-01-01T00:00:00Z",
-    last_seen: null,
-    api_id: null,
-    api_hash: null,
+    updated_at: null,
   },
 ];
 
@@ -120,6 +124,6 @@ describe("TargetsView", () => {
       />
     );
 
-    expect(screen.getByText("Select account")).toBeInTheDocument();
+    expect(screen.getByText("Select an account")).toBeInTheDocument();
   });
 });

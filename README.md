@@ -105,7 +105,7 @@ sudo dnf install gtk3-devel webkit2gtk4.1-devel librsvg2-devel libappindicator-g
 
 ## Release
 
-Current version: **1.0.0**.
+Current version: **1.0.1**.
 
 Release assets are generated in `dist-release/` (installer + portable zip).
 

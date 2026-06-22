@@ -30,7 +30,6 @@ export function useDebouncedEvent<T>(
   }, [handler]);
 
   useEffect(() => {
-    let cancelled = false;
     const unlistenPromise = listen<T>(eventName, (event) => {
       const now = Date.now();
       const payload = event.payload;
@@ -61,17 +60,10 @@ export function useDebouncedEvent<T>(
     });
 
     return () => {
-      cancelled = true;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      void unlistenPromise.then((unlisten) => {
-        if (cancelled) {
-          unlisten();
-          return;
-        }
-        unlisten();
-      });
+      void unlistenPromise.then((unlisten) => unlisten());
     };
   }, [eventName, delay, leading]);
 }
@@ -93,7 +85,6 @@ export function useBatchedEvent<T>(
   }, [handler]);
 
   useEffect(() => {
-    let cancelled = false;
     const unlistenPromise = listen<T>(eventName, (event) => {
       batchRef.current.push(event.payload);
 
@@ -112,17 +103,10 @@ export function useBatchedEvent<T>(
     });
 
     return () => {
-      cancelled = true;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      void unlistenPromise.then((unlisten) => {
-        if (cancelled) {
-          unlisten();
-          return;
-        }
-        unlisten();
-      });
+      void unlistenPromise.then((unlisten) => unlisten());
     };
   }, [eventName, batchInterval]);
 }
@@ -145,7 +129,6 @@ export function useThrottledEvent<T>(
   }, [handler]);
 
   useEffect(() => {
-    let cancelled = false;
     const unlistenPromise = listen<T>(eventName, (event) => {
       const now = Date.now();
       const timeSinceLastCall = now - lastCallRef.current;
@@ -172,17 +155,10 @@ export function useThrottledEvent<T>(
     });
 
     return () => {
-      cancelled = true;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      void unlistenPromise.then((unlisten) => {
-        if (cancelled) {
-          unlisten();
-          return;
-        }
-        unlisten();
-      });
+      void unlistenPromise.then((unlisten) => unlisten());
     };
   }, [eventName, interval]);
 }

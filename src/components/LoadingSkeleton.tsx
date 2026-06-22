@@ -6,20 +6,21 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
  */
 export function TableSkeleton({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
   return (
-    <div className="space-y-3">
+    <div className="border rounded-xl overflow-hidden">
       {/* Header */}
-      <div className="flex gap-4 px-4 py-2">
+      <div className="flex gap-4 px-4 py-3 bg-muted/40 border-b">
         {Array.from({ length: columns }).map((_, i) => (
-          <Skeleton key={i} className="h-4 flex-1" />
+          <Skeleton key={i} className={`h-3.5 ${i === 0 ? "w-8" : "flex-1"}`} />
         ))}
       </div>
       {/* Rows */}
       {Array.from({ length: rows }).map((_, rowIdx) => (
-        <div key={rowIdx} className="flex gap-4 px-4 py-3 border rounded-lg">
+        <div key={rowIdx} className="flex gap-4 px-4 py-3.5 border-b last:border-0 animate-pulse">
           {Array.from({ length: columns }).map((_, colIdx) => (
-            <Skeleton 
-              key={colIdx} 
-              className={`h-4 ${colIdx === 0 ? 'w-32' : 'flex-1'}`} 
+            <Skeleton
+              key={colIdx}
+              className={`h-4 ${colIdx === 0 ? "w-8" : colIdx === 1 ? "w-32" : "flex-1"}`}
+              style={{ animationDelay: `${rowIdx * 60}ms` }}
             />
           ))}
         </div>
@@ -33,17 +34,23 @@ export function TableSkeleton({ rows = 5, columns = 4 }: { rows?: number; column
  */
 export function CardSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div className="space-y-3">
       {Array.from({ length: count }).map((_, i) => (
-        <Card key={i}>
-          <CardHeader>
-            <Skeleton className="h-5 w-2/3" />
-            <Skeleton className="h-3 w-1/2" />
+        <Card key={i} className="animate-pulse" style={{ animationDelay: `${i * 80}ms` }}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-2/5" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+              <Skeleton className="h-6 w-16 rounded-full" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-4/5" />
             </div>
           </CardContent>
         </Card>

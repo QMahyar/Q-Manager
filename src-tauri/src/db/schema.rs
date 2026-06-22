@@ -16,6 +16,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         PRAGMA busy_timeout = 5000;          -- 5 second timeout on lock contention
         PRAGMA cache_size = -64000;          -- 64MB page cache
         PRAGMA temp_store = MEMORY;          -- Store temp tables in memory
+        -- mmap_size is intentionally omitted: memory-mapped I/O can cause issues on
+        -- some platforms (e.g., 32-bit processes, network filesystems) and SQLite's
+        -- WAL + page-cache already provides good read performance without it.
     ",
     )?;
 

@@ -4,14 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RegexTestDialog, RegexValidationBadge } from "@/components/RegexTestDialog";
 import { HelpTooltip, helpContent } from "@/components/HelpTooltip";
 import { validateDisplayName } from "@/lib/validation";
 import { toastError } from "@/lib/toast-utils";
-import { toast } from "@/components/ui/sonner";
 import type { Action, ActionCreate, ActionPattern, ActionUpdate, ButtonType } from "@/lib/types";
-import { IconFlask } from "@tabler/icons-react";
+import { IconFlask, IconTrash, IconAlertTriangle } from "@tabler/icons-react";
 
 interface ActionDialogsProps {
   addActionOpen: boolean;
@@ -49,7 +48,7 @@ interface ActionDialogsProps {
   onUpdateEditPatternPriority: (value: number) => void;
   onCreateAction: (payload: ActionCreate) => void;
   onUpdateAction: (payload: ActionUpdate) => void;
-  onDeleteAction: (actionId: number) => void;
+  onDeleteAction: () => void;
   onCreatePattern: () => void;
   onUpdatePattern: () => void;
 }
@@ -94,15 +93,17 @@ export function ActionDialogs({
   onCreatePattern,
   onUpdatePattern,
 }: ActionDialogsProps) {
-  const [nameError, setNameError] = useState<string | undefined>();
+  const [addNameError, setAddNameError] = useState<string | undefined>();
+  const [editNameError, setEditNameError] = useState<string | undefined>();
 
   const handleCreateAction = () => {
     const validation = validateDisplayName(newActionName);
     if (!validation.valid) {
-      setNameError(validation.error);
+      setAddNameError(validation.error);
       toastError("Invalid name", validation.error);
       return;
     }
+    setAddNameError(undefined);
     onCreateAction({
       name: newActionName.trim(),
       button_type: newButtonType,
@@ -115,10 +116,11 @@ export function ActionDialogs({
     if (!actionToEdit) return;
     const validation = validateDisplayName(newActionName);
     if (!validation.valid) {
-      setNameError(validation.error);
+      setEditNameError(validation.error);
       toastError("Invalid name", validation.error);
       return;
     }
+    setEditNameError(undefined);
     onUpdateAction({
       id: actionToEdit.id,
       name: newActionName.trim(),
@@ -130,7 +132,7 @@ export function ActionDialogs({
 
   return (
     <>
-      <Dialog open={addActionOpen} onOpenChange={onAddActionChange}>
+      <Dialog open={addActionOpen} onOpenChange={(open) => { if (!open) setAddNameError(undefined); onAddActionChange(open); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Action</DialogTitle>
@@ -145,36 +147,36 @@ export function ActionDialogs({
                 onChange={(e) => {
                   onUpdateNewActionName(e.target.value);
                   const result = validateDisplayName(e.target.value);
-                  setNameError(result.error);
+                  setAddNameError(result.error);
                 }}
                 placeholder="e.g., Vote, Shoot, Heal"
-                className={nameError ? "border-destructive" : ""}
+                className={addNameError ? "border-destructive" : ""}
               />
-              {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+              {addNameError && <p className="text-xs text-destructive">{addNameError}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="button-type">Button Type</Label>
-              <select
-                id="button-type"
-                value={newButtonType}
-                onChange={(e) => onUpdateNewButtonType(e.target.value as ButtonType)}
-                className="w-full border rounded px-3 py-2 text-sm bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <option value="player_list">Player List</option>
-                <option value="yes_no">Yes/No</option>
-                <option value="fixed">Fixed Button</option>
-              </select>
+              <Select value={newButtonType} onValueChange={(v) => onUpdateNewButtonType(v as ButtonType)}>
+                <SelectTrigger id="button-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="player_list">Player List</SelectItem>
+                  <SelectItem value="yes_no">Yes / No</SelectItem>
+                  <SelectItem value="fixed">Fixed Button</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
               <div>
-                <Label htmlFor="random-fallback">Random Fallback</Label>
+                <Label htmlFor="random-fallback" className="cursor-pointer">Random Fallback</Label>
                 <p className="text-xs text-muted-foreground">Pick random target if none from list are available</p>
               </div>
               <Switch id="random-fallback" checked={newRandomFallback} onCheckedChange={onUpdateNewRandomFallback} />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
               <div>
-                <Label htmlFor="two-step">Two-step action</Label>
+                <Label htmlFor="two-step" className="cursor-pointer">Two-step action</Label>
                 <p className="text-xs text-muted-foreground">Requires two sequential prompts (e.g., Cupid)</p>
               </div>
               <Switch id="two-step" checked={newIsTwoStep} onCheckedChange={onUpdateNewIsTwoStep} />
@@ -189,7 +191,7 @@ export function ActionDialogs({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editActionOpen} onOpenChange={onEditActionChange}>
+      <Dialog open={editActionOpen} onOpenChange={(open) => { if (!open) setEditNameError(undefined); onEditActionChange(open); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Action</DialogTitle>
@@ -204,29 +206,29 @@ export function ActionDialogs({
                 onChange={(e) => {
                   onUpdateNewActionName(e.target.value);
                   const result = validateDisplayName(e.target.value);
-                  setNameError(result.error);
+                  setEditNameError(result.error);
                 }}
                 placeholder="e.g., Vote, Shoot, Heal"
-                className={nameError ? "border-destructive" : ""}
+                className={editNameError ? "border-destructive" : ""}
               />
-              {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+              {editNameError && <p className="text-xs text-destructive">{editNameError}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-button-type">Button Type</Label>
-              <select
-                id="edit-button-type"
-                value={newButtonType}
-                onChange={(e) => onUpdateNewButtonType(e.target.value as ButtonType)}
-                className="w-full border rounded px-3 py-2 text-sm bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <option value="player_list">Player List</option>
-                <option value="yes_no">Yes/No</option>
-                <option value="fixed">Fixed Button</option>
-              </select>
+              <Select value={newButtonType} onValueChange={(v) => onUpdateNewButtonType(v as ButtonType)}>
+                <SelectTrigger id="edit-button-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="player_list">Player List</SelectItem>
+                  <SelectItem value="yes_no">Yes / No</SelectItem>
+                  <SelectItem value="fixed">Fixed Button</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
               <div>
-                <Label htmlFor="edit-random-fallback">Random Fallback</Label>
+                <Label htmlFor="edit-random-fallback" className="cursor-pointer">Random Fallback</Label>
                 <p className="text-xs text-muted-foreground">Pick random target if none from list are available</p>
               </div>
               <Switch
@@ -235,9 +237,9 @@ export function ActionDialogs({
                 onCheckedChange={onUpdateNewRandomFallback}
               />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
               <div>
-                <Label htmlFor="edit-two-step">Two-step action</Label>
+                <Label htmlFor="edit-two-step" className="cursor-pointer">Two-step action</Label>
                 <p className="text-xs text-muted-foreground">Requires two sequential prompts (e.g., Cupid)</p>
               </div>
               <Switch id="edit-two-step" checked={newIsTwoStep} onCheckedChange={onUpdateNewIsTwoStep} />
@@ -256,19 +258,23 @@ export function ActionDialogs({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Action</DialogTitle>
-            <DialogDescription>This will also delete all associated patterns and target rules.</DialogDescription>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <p>
-              Are you sure you want to delete <strong>{actionToDelete?.name}</strong>?
-            </p>
+          <div className="py-2 space-y-3">
+            <div className="flex items-start gap-3 rounded-lg bg-destructive/10 border border-destructive/20 p-3">
+              <IconAlertTriangle className="size-4 text-destructive mt-0.5 shrink-0" />
+              <p className="text-sm text-destructive">
+                Deleting <strong>{actionToDelete?.name}</strong> will also remove all associated patterns and target rules.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => onDeleteActionChange(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => actionToDelete && onDeleteAction(actionToDelete.id)}>
-              Delete
+            <Button variant="destructive" onClick={() => actionToDelete && onDeleteAction()}>
+              <IconTrash className="size-4 mr-1.5" />
+              Delete Action
             </Button>
           </DialogFooter>
         </DialogContent>

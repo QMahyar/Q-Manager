@@ -45,16 +45,23 @@ export function TargetsView({
   return (
     <Tabs value={view} onValueChange={(value) => onViewChange(value as "account" | "action")}>
       <div className="flex items-center justify-between mb-4">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="account">
-            <IconUser className="size-4 mr-1" />
-            Account-First
-          </TabsTrigger>
-          <TabsTrigger value="action">
-            <IconHandClick className="size-4 mr-1" />
-            Action-First
-          </TabsTrigger>
-        </TabsList>
+        <div className="space-y-1">
+          <TabsList className="flex-wrap">
+            <TabsTrigger value="account" className="flex items-center gap-1.5">
+              <IconUser className="size-3.5" />
+              Account-First
+            </TabsTrigger>
+            <TabsTrigger value="action" className="flex items-center gap-1.5">
+              <IconHandClick className="size-3.5" />
+              Action-First
+            </TabsTrigger>
+          </TabsList>
+          <p className="text-xs text-muted-foreground pl-1">
+            {view === "account"
+              ? "Select an account, then configure targeting per action"
+              : "Select an action, then configure targeting per account"}
+          </p>
+        </div>
       </div>
 
       <TabsContent value="account">

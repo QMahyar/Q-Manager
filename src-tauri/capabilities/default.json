@@ -14,9 +14,20 @@
     "fs:default",
     "fs:allow-read",
     "fs:allow-write",
+    "fs:allow-read-dir",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-exists",
+    "fs:allow-stat",
     {
       "identifier": "fs:scope",
-      "allow": ["**/*"]
+      "allow": [
+        "$APPDATA/**",
+        "$APPDATA/*",
+        "$RESOURCE/**",
+        "$RESOURCE/*"
+      ]
     }
   ]
 }

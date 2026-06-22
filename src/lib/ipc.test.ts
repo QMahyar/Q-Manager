@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { IPC_COMMANDS, IPC_EVENTS } from "./ipc";
+import { IPC_COMMANDS, IPC_EVENTS, type IpcCommandName, type IpcEventName } from "./ipc";
 
-const BACKEND_COMMANDS = new Set([
+const BACKEND_COMMANDS = new Set<IpcCommandName>([
   "settings_get",
   "settings_update",
   "accounts_list",
@@ -58,6 +58,7 @@ const BACKEND_COMMANDS = new Set([
   "account_session_path",
   "account_get",
   "account_name_exists",
+  "account_refresh_session",
   "account_update",
   "group_slots_get",
   "group_slot_update",
@@ -79,7 +80,7 @@ const BACKEND_COMMANDS = new Set([
   "login_cancel",
 ]);
 
-const BACKEND_EVENTS = new Set([
+const BACKEND_EVENTS = new Set<IpcEventName>([
   "account-status",
   "phase-detected",
   "action-detected",
@@ -87,6 +88,10 @@ const BACKEND_EVENTS = new Set([
   "account-log",
   "regex-validation-error",
   "login-progress",
+  "tray-start-account",
+  "tray-stop-account",
+  "tray-start-all",
+  "tray-stop-all",
 ]);
 
 describe("IPC contract", () => {
@@ -96,9 +101,23 @@ describe("IPC contract", () => {
     });
   });
 
+  it("backend commands are all declared on the frontend", () => {
+    const frontendCommands = new Set(Object.values(IPC_COMMANDS));
+    BACKEND_COMMANDS.forEach((cmd) => {
+      expect(frontendCommands.has(cmd)).toBe(true);
+    });
+  });
+
   it("frontend events exist in backend list", () => {
     Object.values(IPC_EVENTS).forEach((event) => {
       expect(BACKEND_EVENTS.has(event)).toBe(true);
+    });
+  });
+
+  it("backend events are all declared on the frontend", () => {
+    const frontendEvents = new Set(Object.values(IPC_EVENTS));
+    BACKEND_EVENTS.forEach((event) => {
+      expect(frontendEvents.has(event)).toBe(true);
     });
   });
 });

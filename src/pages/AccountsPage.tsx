@@ -19,6 +19,9 @@ import {
   IconPlayerStop,
   IconPencil,
   IconTrash,
+  IconAlertCircle,
+  IconUsers,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -52,6 +55,7 @@ import {
   exportAccount,
   exportAccounts,
   checkAccountStart,
+  refreshAccountSession,
   type ExportFormat,
   type ImportConflict,
   type ImportCandidate,
@@ -59,11 +63,13 @@ import {
   type ImportAction,
 } from "@/lib/api";
 import { useAccountsData } from "@/hooks/useAccountsData";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Account, AccountStatus, StartupCheckResult, BulkStartReport } from "@/lib/types";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { toastError } from "@/lib/toast-utils";
 import { NoAccounts } from "@/components/EmptyState";
 import { TableSkeleton } from "@/components/LoadingSkeleton";
+import { compareStringsNatural } from "@/lib/utils";
 
 export default function AccountsPage() {
   const navigate = useNavigate();
@@ -119,6 +125,43 @@ export default function AccountsPage() {
     stopSelectedMutation,
   } = useAccountsData();
 
+  const queryClient = useQueryClient();
+
+  // Set of account IDs currently being refreshed
+  const [refreshingIds, setRefreshingIds] = useState<Set<number>>(new Set());
+
+  const refreshMutation = useMutation({
+    mutationFn: (accountId: number) => refreshAccountSession(accountId),
+    onMutate: (accountId) => {
+      setRefreshingIds((prev) => new Set(prev).add(accountId));
+    },
+    onSuccess: (result) => {
+      setRefreshingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(result.account_id);
+        return next;
+      });
+      if (result.updated) {
+        toast.success("Session refreshed", {
+          description: result.message,
+        });
+        queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      } else {
+        toast.warning("Session not refreshed", {
+          description: result.message,
+        });
+      }
+    },
+    onError: (error, accountId) => {
+      setRefreshingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
+      });
+      toastError("Failed to refresh session", error);
+    },
+  });
+
   const accounts = accountsQuery.data ?? [];
   const isLoading = accountsQuery.isLoading;
 
@@ -157,6 +200,11 @@ export default function AccountsPage() {
       cell: ({ row }) => (
         <span className="font-medium">{row.getValue("account_name")}</span>
       ),
+      sortingFn: (rowA, rowB, columnId) =>
+        compareStringsNatural(
+          String(rowA.getValue(columnId) ?? ""),
+          String(rowB.getValue(columnId) ?? "")
+        ),
     },
     {
       accessorKey: "phone",
@@ -199,7 +247,7 @@ export default function AccountsPage() {
       cell: ({ row }) => {
         const account = row.original;
         return (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-0.5">
             {account.status === "stopped" || account.status === "error" ? (
               <Button
                 variant="ghost"
@@ -208,6 +256,7 @@ export default function AccountsPage() {
                 aria-label="Start account"
                 onClick={() => handleStartAccount(account)}
                 disabled={startMutation.isPending}
+                className="text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10"
               >
                 <IconPlayerPlay className="size-4" />
               </Button>
@@ -219,6 +268,7 @@ export default function AccountsPage() {
                 aria-label="Stop account"
                 onClick={() => stopMutation.mutate(account.id)}
                 disabled={stopMutation.isPending}
+                className="text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
               >
                 <IconPlayerStop className="size-4" />
               </Button>
@@ -229,15 +279,31 @@ export default function AccountsPage() {
               onClick={() => navigate(`/accounts/${account.id}/edit`)}
               title="Edit"
               aria-label="Edit account"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               <IconPencil className="size-4" />
             </Button>
+            {/* Show refresh button when phone or user_id is missing */}
+            {(!account.phone || !account.user_id) && account.status === "stopped" && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => refreshMutation.mutate(account.id)}
+                disabled={refreshingIds.has(account.id)}
+                title="Refresh session info (fetch phone & user ID from Telegram)"
+                aria-label="Refresh session info"
+                className="text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
+              >
+                <IconRefresh className={`size-4 ${refreshingIds.has(account.id) ? "animate-spin" : ""}`} />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={() => openExportDialog(account)}
               title="Export"
               aria-label="Export account"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               <IconDownload className="size-4" />
             </Button>
@@ -250,6 +316,7 @@ export default function AccountsPage() {
               }}
               title="Delete"
               aria-label="Delete account"
+              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             >
               <IconTrash className="size-4" />
             </Button>
@@ -257,7 +324,7 @@ export default function AccountsPage() {
         );
       },
     },
-  ], [getStatusBadge, navigate, startMutation, stopMutation]);
+  ], [getStatusBadge, navigate, startMutation, stopMutation, refreshMutation, refreshingIds]);
 
   // TanStack Table instance
   const table = useReactTable({
@@ -383,14 +450,56 @@ export default function AccountsPage() {
 
   const resolveImport = async (resolutions: ImportResolution[]) => {
     const results = await importAccountResolve(resolutions);
-    const successCount = results.filter((item) => item.success).length;
+    const succeeded = results.filter((item) => item.success && item.account_id != null);
     const failed = results.filter((item) => !item.success);
 
-    if (successCount > 0) {
+    if (succeeded.length > 0) {
       toast.success("Import completed", {
-        description: `${successCount} account${successCount === 1 ? "" : "s"} imported successfully.`,
+        description: `${succeeded.length} account${succeeded.length === 1 ? "" : "s"} imported successfully.`,
       });
       accountsQuery.refetch();
+
+      // Auto-refresh session info for newly imported accounts.
+      // Runs in background — no await, non-blocking.
+      const toRefresh = succeeded.map((r) => r.account_id as number);
+      if (toRefresh.length > 0) {
+        setRefreshingIds((prev) => {
+          const next = new Set(prev);
+          toRefresh.forEach((id) => next.add(id));
+          return next;
+        });
+        // Stagger refreshes to avoid spawning too many Telethon processes at once
+        (async () => {
+          let refreshed = 0;
+          let failed_refresh = 0;
+          for (const accountId of toRefresh) {
+            try {
+              const result = await refreshAccountSession(accountId);
+              if (result.updated) refreshed++;
+            } catch {
+              failed_refresh++;
+            } finally {
+              setRefreshingIds((prev) => {
+                const next = new Set(prev);
+                next.delete(accountId);
+                return next;
+              });
+            }
+          }
+          // Refetch to show updated phone/user_id/telegram_name
+          await accountsQuery.refetch();
+          if (refreshed > 0) {
+            toast.success("Session info updated", {
+              description: `Fetched phone & user ID for ${refreshed} account${refreshed === 1 ? "" : "s"}.`,
+            });
+          }
+          if (failed_refresh > 0) {
+            toast.warning(`${failed_refresh} account${failed_refresh === 1 ? "" : "s"} could not be refreshed`, {
+              description: "Check that API credentials are configured in Settings.",
+            });
+          }
+        })();
+      }
     }
 
     if (failed.length > 0) {
@@ -565,9 +674,11 @@ export default function AccountsPage() {
       filters: exportFormat === "zip" ? [{ name: "ZIP Archive", extensions: ["zip"] }] : [],
     });
 
-    if (!result) return;
+    if (!result) {
+      setExportingMultiple(false);
+      return;
+    }
 
-    setExportingMultiple(true);
     try {
       const exportResult = await exportAccounts(selectedAccountIds, result, exportFormat);
       if (exportResult.success) {
@@ -591,10 +702,77 @@ export default function AccountsPage() {
     setExportDialogOpen(true);
   };
 
+  // Accounts that are stopped and missing phone or user_id
+  const accountsMissingInfo = useMemo(
+    () => accounts.filter((a) => a.status === "stopped" && (!a.phone || !a.user_id)),
+    [accounts]
+  );
+
+  const [bulkRefreshing, setBulkRefreshing] = useState(false);
+
+  const handleBulkRefresh = async () => {
+    if (accountsMissingInfo.length === 0 || bulkRefreshing) return;
+    setBulkRefreshing(true);
+
+    const ids = accountsMissingInfo.map((a) => a.id);
+    setRefreshingIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+
+    let refreshed = 0;
+    let skipped = 0;
+    for (const accountId of ids) {
+      try {
+        const result = await refreshAccountSession(accountId);
+        if (result.updated) refreshed++;
+        else skipped++;
+      } catch {
+        skipped++;
+      } finally {
+        setRefreshingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(accountId);
+          return next;
+        });
+      }
+    }
+
+    await accountsQuery.refetch();
+    setBulkRefreshing(false);
+
+    if (refreshed > 0) {
+      toast.success("Bulk refresh complete", {
+        description: `Updated ${refreshed} account${refreshed === 1 ? "" : "s"}.${skipped > 0 ? ` ${skipped} could not be refreshed.` : ""}`,
+      });
+    } else {
+      toast.warning("No accounts refreshed", {
+        description: "Check that API credentials are configured in Settings.",
+      });
+    }
+  };
+
   return (
     <PageTransition className="min-h-screen flex flex-col">
-      <PageHeader title="Accounts" description="Manage Telegram accounts and sessions">
+      <PageHeader title="Accounts" description="Manage Telegram accounts and sessions" icon={IconUsers} iconColor="text-sky-500">
         <div className="flex items-center gap-2">
+          {accountsMissingInfo.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkRefresh}
+              disabled={bulkRefreshing}
+              title={`Fetch phone & user ID for ${accountsMissingInfo.length} account${accountsMissingInfo.length === 1 ? "" : "s"} missing info`}
+              className="text-amber-500 border-amber-500/40 hover:bg-amber-500/10 hover:text-amber-600"
+            >
+              <IconRefresh className={`size-4 mr-1 ${bulkRefreshing ? "animate-spin" : ""}`} />
+              {bulkRefreshing
+                ? "Refreshing..."
+                : `Refresh ${accountsMissingInfo.length} Account${accountsMissingInfo.length === 1 ? "" : "s"}`}
+            </Button>
+          )}
+
           <Button size="sm" onClick={() => setLoginWizardOpen(true)}>
             <IconUserPlus className="size-4 mr-1" />
             Create
@@ -663,16 +841,23 @@ export default function AccountsPage() {
             <DialogHeader>
               <DialogTitle>Delete Account</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete "{accountToDelete?.account_name}"? This will remove the
-                database record and session files. This action cannot be undone.
+                This will permanently remove the account, database record, and all session files.
               </DialogDescription>
             </DialogHeader>
+            <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 my-2">
+              <IconTrash className="size-4 text-destructive mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-destructive">{accountToDelete?.account_name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">This action cannot be undone.</p>
+              </div>
+            </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
                 Cancel
               </Button>
               <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
-                Delete
+                <IconTrash className="size-4 mr-1.5" />
+                {deleteMutation.isPending ? "Deleting..." : "Delete Account"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -809,7 +994,7 @@ export default function AccountsPage() {
                       onValueChange={(value) => setImportDefaultAction(value as ImportAction)}
                     >
                       <SelectTrigger id="import-default-action">
-                        <SelectValue placeholder="Choose default action" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="rename">Rename</SelectItem>
@@ -898,15 +1083,15 @@ export default function AccountsPage() {
             <DialogHeader>
               <DialogTitle>Start All Accounts</DialogTitle>
               <DialogDescription>
-                Are you sure you want to start all stopped accounts?
-                This will start {accounts.filter(a => a.status === "stopped" || a.status === "error").length} account(s).
+                Start all {accounts.filter(a => a.status === "stopped" || a.status === "error").length} stopped account(s)?
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setStartAllDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={() => {
                   startAllMutation.mutate(undefined, {
                     onSuccess: (reports) => {
@@ -934,15 +1119,14 @@ export default function AccountsPage() {
             <DialogHeader>
               <DialogTitle>Stop All Accounts</DialogTitle>
               <DialogDescription>
-                Are you sure you want to stop all running accounts?
-                This will stop {accounts.filter(a => a.status === "running").length} account(s).
+                Stop all {accounts.filter(a => a.status === "running").length} running account(s)?
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setStopAllDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 variant="destructive"
                 onClick={() => {
                   stopAllMutation.mutate();
@@ -961,9 +1145,12 @@ export default function AccountsPage() {
         <Dialog open={validationDialogOpen} onOpenChange={setValidationDialogOpen}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle className="text-destructive">Cannot Start Account</DialogTitle>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <IconAlertCircle className="size-5" />
+                Cannot Start Account
+              </DialogTitle>
               <DialogDescription>
-                "{validationAccountName}" cannot be started due to the following issues:
+                <span className="font-medium text-foreground">"{validationAccountName}"</span> has the following issues:
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-80 overflow-y-auto">

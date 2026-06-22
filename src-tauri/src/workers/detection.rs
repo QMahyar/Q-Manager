@@ -23,16 +23,24 @@ static REGEX_CACHE: Lazy<Mutex<LruCache<String, Arc<Regex>>>> = Lazy::new(|| {
 
 /// Get or compile a regex pattern (uses LRU cache for efficient eviction)
 fn get_regex(pattern: &str) -> Result<Arc<Regex>, String> {
+    // Fast path: pattern already cached.
     if let Some(regex) = REGEX_CACHE.lock().get(pattern) {
         return Ok(Arc::clone(regex));
     }
 
-    // Compile outside the lock to avoid blocking other threads
+    // Compile outside the lock so we don't block other threads while doing
+    // potentially expensive regex compilation.
     let compiled = Arc::new(Regex::new(pattern).map_err(|e| {
         log::warn!("Invalid regex pattern '{}': {}", pattern, e);
         format!("Invalid regex: {}", e)
     })?);
 
+    // Re-acquire the lock and check again (double-checked locking).
+    // Two threads may both reach this point concurrently for the same pattern;
+    // whichever gets the lock second will find the entry already inserted and
+    // return the existing Arc, discarding its own compiled copy. This wastes
+    // one compilation but is otherwise harmless and avoids a more complex
+    // synchronisation scheme.
     let mut cache = REGEX_CACHE.lock();
     if let Some(existing) = cache.get(pattern) {
         return Ok(Arc::clone(existing));
@@ -167,7 +175,7 @@ impl DetectionPipeline {
 
         // Sort by priority (desc)
         self.action_patterns
-            .sort_by(|a, b| b.priority.cmp(&a.priority));
+            .sort_by_key(|b| std::cmp::Reverse(b.priority));
     }
 
     /// Process a message and return all matches
@@ -191,14 +199,20 @@ impl DetectionPipeline {
             }
         }
 
-        // Check action patterns
+        // Check action patterns — collect highest-priority match per action_id
+        // to prevent the same action from firing multiple times in one message.
+        let mut seen_action_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
         for pattern in &self.action_patterns {
+            if seen_action_ids.contains(&pattern.action_id) {
+                continue; // already have a match for this action (patterns are sorted by priority desc)
+            }
             if self.matches(
                 &event.text,
                 &pattern.pattern,
                 pattern.is_regex,
                 Some("action"),
             ) {
+                seen_action_ids.insert(pattern.action_id);
                 results.push(DetectionResult::Action {
                     action_id: pattern.action_id,
                     action_name: pattern.action_name.clone(),
@@ -208,19 +222,6 @@ impl DetectionPipeline {
                 });
             }
         }
-
-        // Sort all results by priority (already sorted, but combined list needs re-sort)
-        results.sort_by(|a, b| {
-            let priority_a = match a {
-                DetectionResult::Phase { priority, .. } => *priority,
-                DetectionResult::Action { priority, .. } => *priority,
-            };
-            let priority_b = match b {
-                DetectionResult::Phase { priority, .. } => *priority,
-                DetectionResult::Action { priority, .. } => *priority,
-            };
-            priority_b.cmp(&priority_a)
-        });
 
         results
     }

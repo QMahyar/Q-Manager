@@ -9,6 +9,9 @@ export function createTestQueryClient() {
         retry: false,
         staleTime: 0,
       },
+      mutations: {
+        retry: false,
+      },
     },
   });
 }
@@ -23,4 +26,16 @@ export function renderWithQueryClient(ui: ReactElement, client?: QueryClient) {
     queryClient,
     ...render(ui, { wrapper: Wrapper }),
   };
+}
+
+/**
+ * Create a wrapper function for use with renderHook.
+ * @example
+ * const { result } = renderHook(() => useMyHook(), { wrapper: createWrapper() });
+ */
+export function createWrapper() {
+  const queryClient = createTestQueryClient();
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
 }

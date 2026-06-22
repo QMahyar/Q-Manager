@@ -233,13 +233,21 @@ pub fn blacklist_add(
 
     let conn = db::get_conn().map_err(error_response)?;
 
+    // Use INSERT OR IGNORE to silently handle duplicate entries (UNIQUE constraint on account_id, action_id, button_text)
     conn.execute(
-        "INSERT INTO target_blacklist (account_id, action_id, button_text) VALUES (?1, ?2, ?3)",
+        "INSERT OR IGNORE INTO target_blacklist (account_id, action_id, button_text) VALUES (?1, ?2, ?3)",
         params![account_id, action_id, button_text],
     )
     .map_err(error_response)?;
 
-    let id = conn.last_insert_rowid();
+    // Fetch the id whether the row was just inserted or already existed
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM target_blacklist WHERE account_id = ?1 AND action_id = ?2 AND button_text = ?3",
+            params![account_id, action_id, button_text],
+            |row| row.get(0),
+        )
+        .map_err(error_response)?;
 
     Ok(BlacklistEntry {
         id,
@@ -534,9 +542,20 @@ pub fn targets_copy(
     to_account_ids: Vec<i64>,
     action_ids: Vec<i64>,
 ) -> CommandResult<()> {
-    let conn = db::get_conn().map_err(error_response)?;
+    let mut conn = db::get_conn().map_err(error_response)?;
+    // Use rusqlite's Transaction API for proper savepoint/nested transaction support
+    let tx = conn.transaction().map_err(error_response)?;
+    targets_copy_inner(&tx, from_account_id, &to_account_ids, &action_ids)?;
+    tx.commit().map_err(error_response)
+}
 
-    for action_id in &action_ids {
+fn targets_copy_inner(
+    conn: &rusqlite::Connection,
+    from_account_id: i64,
+    to_account_ids: &[i64],
+    action_ids: &[i64],
+) -> CommandResult<()> {
+    for action_id in action_ids {
         // Get source override
         let source_override: Option<String> = conn
             .query_row(
@@ -581,7 +600,7 @@ pub fn targets_copy(
             .collect();
 
         // Copy to each target account
-        for to_account_id in &to_account_ids {
+        for to_account_id in to_account_ids {
             if *to_account_id == from_account_id {
                 continue;
             }
@@ -589,14 +608,13 @@ pub fn targets_copy(
             // Copy override
             if let Some(ref rule_json) = source_override {
                 conn.execute(
-                    "INSERT INTO target_overrides (account_id, action_id, rule_json) VALUES (?1, ?2, ?3)
-                     ON CONFLICT(account_id, action_id) DO UPDATE SET rule_json = ?3",
-                    params![to_account_id, action_id, rule_json],
+                    "INSERT INTO target_overrides (account_id, action_id, rule_json) VALUES (?1, ?2, ?3)\n                     ON CONFLICT(account_id, action_id) DO UPDATE SET rule_json = ?3",
+                    params![*to_account_id, action_id, rule_json],
                 ).map_err(error_response)?;
             } else {
                 conn.execute(
                     "DELETE FROM target_overrides WHERE account_id = ?1 AND action_id = ?2",
-                    params![to_account_id, action_id],
+                    params![*to_account_id, action_id],
                 )
                 .map_err(error_response)?;
             }
@@ -604,14 +622,13 @@ pub fn targets_copy(
             // Copy delay
             if let Some((min, max)) = source_delay {
                 conn.execute(
-                    "INSERT INTO delay_overrides (account_id, action_id, min_seconds, max_seconds) VALUES (?1, ?2, ?3, ?4)
-                     ON CONFLICT(account_id, action_id) DO UPDATE SET min_seconds = ?3, max_seconds = ?4",
-                    params![to_account_id, action_id, min, max],
+                    "INSERT INTO delay_overrides (account_id, action_id, min_seconds, max_seconds) VALUES (?1, ?2, ?3, ?4)\n                     ON CONFLICT(account_id, action_id) DO UPDATE SET min_seconds = ?3, max_seconds = ?4",
+                    params![*to_account_id, action_id, min, max],
                 ).map_err(error_response)?;
             } else {
                 conn.execute(
                     "DELETE FROM delay_overrides WHERE account_id = ?1 AND action_id = ?2",
-                    params![to_account_id, action_id],
+                    params![*to_account_id, action_id],
                 )
                 .map_err(error_response)?;
             }
@@ -619,29 +636,28 @@ pub fn targets_copy(
             // Copy blacklist (delete existing first)
             conn.execute(
                 "DELETE FROM target_blacklist WHERE account_id = ?1 AND action_id = ?2",
-                params![to_account_id, action_id],
+                params![*to_account_id, action_id],
             )
             .map_err(error_response)?;
 
             for button_text in &blacklist {
                 conn.execute(
                     "INSERT INTO target_blacklist (account_id, action_id, button_text) VALUES (?1, ?2, ?3)",
-                    params![to_account_id, action_id, button_text],
+                    params![*to_account_id, action_id, button_text],
                 ).map_err(error_response)?;
             }
 
             // Copy target pairs (delete existing first)
             conn.execute(
                 "DELETE FROM target_pairs WHERE account_id = ?1 AND action_id = ?2",
-                params![to_account_id, action_id],
+                params![*to_account_id, action_id],
             )
             .map_err(error_response)?;
 
             for (order_index, target_a, target_b) in &pairs {
                 conn.execute(
-                    "INSERT INTO target_pairs (account_id, action_id, order_index, target_a, target_b) 
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![to_account_id, action_id, order_index, target_a, target_b],
+                    "INSERT INTO target_pairs (account_id, action_id, order_index, target_a, target_b) \n                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![*to_account_id, action_id, order_index, target_a, target_b],
                 ).map_err(error_response)?;
             }
         }

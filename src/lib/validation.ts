@@ -49,12 +49,12 @@ export const rules = {
   }),
 
   numeric: (message = "Must be a number"): ValidationRule<string> => ({
-    validate: (value) => !isNaN(Number(value)),
+    validate: (value) => value.trim() !== "" && !isNaN(Number(value)),
     message,
   }),
 
   integer: (message = "Must be a whole number"): ValidationRule<string> => ({
-    validate: (value) => Number.isInteger(Number(value)),
+    validate: (value) => /^-?\d+$/.test(value.trim()),
     message,
   }),
 
@@ -416,7 +416,7 @@ export function validateBotUserId(userId: number | string | null | undefined): V
     return { valid: false, error: "Bot User ID must be a number" };
   }
 
-  if (numericId < 0) {
+  if (numericId <= 0) {
     return { valid: false, error: "Bot User ID must be a positive number" };
   }
 

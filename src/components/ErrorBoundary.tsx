@@ -72,7 +72,8 @@ export class ErrorBoundary extends Component<Props, State> {
                 </div>
               )}
               
-              {this.state.errorInfo && (
+              {/* Only show stack trace in development to avoid leaking internals */}
+              {this.state.errorInfo && import.meta.env.DEV && (
                 <details className="text-xs">
                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                     Show stack trace

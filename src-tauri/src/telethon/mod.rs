@@ -56,9 +56,18 @@ pub struct TelethonResponse {
 pub struct TelethonClient {
     child: Arc<Mutex<Child>>,
     stdin: Arc<Mutex<ChildStdin>>,
-    responses: Arc<Mutex<HashMap<String, TelethonResponse>>>,
     pending: Arc<Mutex<HashMap<String, std::sync::mpsc::Sender<TelethonResponse>>>>,
     events: Arc<Mutex<Vec<TelethonEvent>>>,
+}
+
+impl Drop for TelethonClient {
+    fn drop(&mut self) {
+        // Best-effort shutdown: kill the subprocess when the client is dropped
+        // without an explicit shutdown() call.
+        if let Ok(mut child) = self.child.lock() {
+            let _ = child.kill();
+        }
+    }
 }
 
 impl TelethonClient {
@@ -82,30 +91,26 @@ impl TelethonClient {
             .take()
             .ok_or_else(|| "Failed to open worker stdout".to_string())?;
 
-        let responses: Arc<Mutex<HashMap<String, TelethonResponse>>> =
-            Arc::new(Mutex::new(HashMap::new()));
         let pending: Arc<Mutex<HashMap<String, std::sync::mpsc::Sender<TelethonResponse>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let events: Arc<Mutex<Vec<TelethonEvent>>> = Arc::new(Mutex::new(Vec::new()));
-        let responses_clone = Arc::clone(&responses);
         let pending_clone = Arc::clone(&pending);
         let events_clone = Arc::clone(&events);
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
                 if let Ok(response) = serde_json::from_str::<TelethonResponse>(&line) {
-                    if let Some(sender) = pending_clone.lock().unwrap().remove(&response.id) {
+                    // If there's no pending waiter, the response is silently discarded
+                    // (unmatched responses are not buffered to prevent memory leaks)
+                    if let Some(sender) = pending_clone.lock().unwrap_or_else(|p| p.into_inner()).remove(&response.id) {
                         let _ = sender.send(response);
-                    } else {
-                        let mut guard = responses_clone.lock().unwrap();
-                        guard.insert(response.id.clone(), response);
                     }
                 } else if let Ok(event_wrapper) = serde_json::from_str::<serde_json::Value>(&line) {
                     if let Some(event_value) = event_wrapper.get("event") {
                         if let Ok(event) =
                             serde_json::from_value::<TelethonEvent>(event_value.clone())
                         {
-                            let mut guard = events_clone.lock().unwrap();
+                            let mut guard = events_clone.lock().unwrap_or_else(|p| p.into_inner());
                             guard.push(event);
                         }
                     }
@@ -116,7 +121,6 @@ impl TelethonClient {
         Ok(TelethonClient {
             child: Arc::new(Mutex::new(child)),
             stdin: Arc::new(Mutex::new(stdin)),
-            responses,
             pending,
             events,
         })
@@ -132,11 +136,10 @@ impl TelethonClient {
         let payload = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         let (tx, rx) = std::sync::mpsc::channel();
         {
-            let mut pending = self.pending.lock().unwrap();
-            pending.insert(request_id.clone(), tx);
+            self.pending.lock().unwrap_or_else(|p| p.into_inner()).insert(request_id.clone(), tx);
         }
         {
-            let mut stdin = self.stdin.lock().unwrap();
+            let mut stdin = self.stdin.lock().unwrap_or_else(|p| p.into_inner());
             stdin
                 .write_all(payload.as_bytes())
                 .map_err(|e| e.to_string())?;
@@ -147,8 +150,7 @@ impl TelethonClient {
         match rx.recv_timeout(Duration::from_millis(TELETHON_REQUEST_TIMEOUT_MS)) {
             Ok(response) => Ok(response),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                let mut pending = self.pending.lock().unwrap();
-                pending.remove(&request_id);
+                self.pending.lock().unwrap_or_else(|p| p.into_inner()).remove(&request_id);
                 Err("Telethon worker timeout".to_string())
             }
             Err(_) => Err("Telethon worker channel closed".to_string()),
@@ -156,14 +158,35 @@ impl TelethonClient {
     }
 
     pub fn poll_events(&self) -> Vec<TelethonEvent> {
-        let mut guard = self.events.lock().unwrap();
-        let drained = guard.drain(..).collect::<Vec<_>>();
-        drained
+        self.events.lock().unwrap_or_else(|p| p.into_inner()).drain(..).collect()
+    }
+
+    /// Returns true if the worker subprocess is still running.
+    /// Used to detect an unexpectedly-exited worker so the account can reconnect.
+    pub fn is_alive(&self) -> bool {
+        match self.child.lock() {
+            // `Ok(None)` from `try_wait` means the process has not exited yet.
+            Ok(mut child) => matches!(child.try_wait(), Ok(None)),
+            // Poisoned lock: assume alive to avoid spurious reconnect storms.
+            Err(_) => true,
+        }
     }
 
     pub fn shutdown(&self) -> Result<(), String> {
+        // Send graceful shutdown command and give the worker time to disconnect cleanly
         let _ = self.request("shutdown", Value::Null);
-        let mut child = self.child.lock().unwrap();
+        // Wait up to 3 seconds for graceful exit before force-killing
+        let mut child = self.child.lock().unwrap_or_else(|p| p.into_inner());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => return Ok(()), // exited cleanly
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                _ => break,
+            }
+        }
         let _ = child.kill();
         Ok(())
     }

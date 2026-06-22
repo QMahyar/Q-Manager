@@ -15,7 +15,6 @@ use crate::constants::{
     TELETHON_RECONNECT_DELAY_MAX_MS, WORKER_IDLE_BACKOFF_BASE_MS, WORKER_IDLE_BACKOFF_MAX_MS,
     WORKER_IDLE_CYCLES_THRESHOLD,
 };
-use crate::db::{Account, Settings};
 use crate::events::{
     emit_account_status, emit_action_detected, emit_join_attempt, emit_log, emit_phase_detected,
     emit_regex_validation,
@@ -34,11 +33,17 @@ pub enum WorkerState {
     Error(String),
 }
 
-/// Commands that can be sent to a worker
-#[derive(Debug)]
-pub enum WorkerCommand {
-    Stop,
-    Reload,
+impl WorkerState {
+    /// Returns the canonical status string used in the DB and IPC events.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WorkerState::Stopped => "stopped",
+            WorkerState::Starting => "starting",
+            WorkerState::Running => "running",
+            WorkerState::Stopping => "stopping",
+            WorkerState::Error(_) => "error",
+        }
+    }
 }
 
 /// Group slot configuration with its moderator
@@ -145,71 +150,6 @@ impl AccountWorker {
         }
     }
 
-    /// Create worker config from account and settings
-    pub fn config_from_account(
-        account: &Account,
-        settings: &Settings,
-        session_dir: PathBuf,
-    ) -> WorkerConfig {
-        let api_id = account
-            .api_id_override
-            .unwrap_or(settings.api_id.unwrap_or(0));
-        let api_hash = account
-            .api_hash_override
-            .clone()
-            .or_else(|| settings.api_hash.clone())
-            .unwrap_or_default();
-
-        // Validate API ID
-        if api_id == 0 {
-            log::error!(
-                "[{}] Invalid API ID (0). Please configure API ID in Settings or per-account.",
-                account.account_name
-            );
-            log::error!("The worker will fail to authenticate. Please set a valid API ID from https://my.telegram.org");
-        }
-
-        // Validate API Hash
-        if api_hash.is_empty() {
-            log::error!("[{}] Invalid API Hash (empty). Please configure API Hash in Settings or per-account.", account.account_name);
-            log::error!("The worker will fail to authenticate. Please set a valid API Hash from https://my.telegram.org");
-        }
-
-        let max_attempts = account
-            .join_max_attempts_override
-            .unwrap_or(settings.join_max_attempts_default);
-        let cooldown = account
-            .join_cooldown_seconds_override
-            .unwrap_or(settings.join_cooldown_seconds_default);
-
-        // Get moderator bot IDs from settings
-        let main_bot_id = settings.main_bot_user_id;
-        let beta_bot_id = settings.beta_bot_user_id;
-
-        let mut moderator_bot_ids = Vec::new();
-        if let Some(id) = main_bot_id {
-            moderator_bot_ids.push(id);
-        }
-        if let Some(id) = beta_bot_id {
-            moderator_bot_ids.push(id);
-        }
-
-        WorkerConfig {
-            account_id: account.id,
-            account_name: account.account_name.clone(),
-            api_id,
-            api_hash,
-            session_dir,
-            group_slots: Vec::new(), // Will be populated from group slots by manager
-            group_chat_ids: Vec::new(), // Will be populated from group slots
-            moderator_bot_ids,
-            main_bot_id,
-            beta_bot_id,
-            max_join_attempts: max_attempts,
-            join_cooldown_seconds: cooldown,
-        }
-    }
-
     /// Get the moderator bot ID for a specific group
     pub fn get_moderator_for_group(&self, group_id: i64) -> Option<i64> {
         // Find the slot config for this group
@@ -264,8 +204,14 @@ impl AccountWorker {
         self.session = Some(session);
         self.state = WorkerState::Running;
 
-        // Load detection patterns
-        self.load_detection_patterns()?;
+        // Load detection patterns — clean up session on failure
+        if let Err(e) = self.load_detection_patterns() {
+            if let Some(s) = self.session.take() {
+                let _ = s.shutdown();
+            }
+            self.state = WorkerState::Stopped;
+            return Err(e);
+        }
 
         log::info!("[{}] Worker started successfully", self.config.account_name);
         Ok(())
@@ -543,6 +489,17 @@ impl AccountWorker {
 
             if self.state != WorkerState::Running {
                 break;
+            }
+
+            // Detect an unexpectedly-exited Telethon worker process and attempt to
+            // reconnect. Without this a crashed/killed worker would leave the account
+            // marked "running" while silently doing nothing. `handle_connection_lost`
+            // returns Ok on a successful reconnect (loop continues) or Err when all
+            // reconnection attempts are exhausted (propagated so the worker exits in
+            // an error state).
+            let session_alive = self.session.as_ref().map(|s| s.is_alive()).unwrap_or(true);
+            if !session_alive {
+                self.handle_connection_lost("Telethon worker process exited").await?;
             }
 
             // Small sleep with mild backoff to prevent busy-waiting
@@ -1585,4 +1542,110 @@ fn parse_start_parameter(url: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod inline_tests {
+    //! Unit tests for the worker's pure logic. These live inline (rather than in
+    //! the sibling `account_worker_tests` module) so they can exercise private
+    //! functions, fields, and helpers directly.
+    use super::*;
+    use std::path::PathBuf;
+
+    fn test_config() -> WorkerConfig {
+        WorkerConfig {
+            account_id: 1,
+            account_name: "Test".to_string(),
+            api_id: 1,
+            api_hash: "hash".to_string(),
+            session_dir: PathBuf::from("/tmp/q-manager-test"),
+            group_slots: vec![],
+            group_chat_ids: vec![100],
+            moderator_bot_ids: vec![200],
+            main_bot_id: Some(200),
+            beta_bot_id: None,
+            max_join_attempts: 3,
+            join_cooldown_seconds: 5,
+        }
+    }
+
+    #[test]
+    fn parse_start_parameter_extracts_param() {
+        assert_eq!(
+            parse_start_parameter("https://t.me/somebot?start=abc123"),
+            Some("abc123".to_string())
+        );
+        assert_eq!(parse_start_parameter("https://t.me/somebot"), None);
+        assert_eq!(parse_start_parameter("not a url"), None);
+    }
+
+    #[test]
+    fn is_recoverable_error_classifies_transient_vs_fatal() {
+        // Transient/network errors are recoverable.
+        assert!(AccountWorker::is_recoverable_error("Network connection lost"));
+        assert!(AccountWorker::is_recoverable_error("Request timeout"));
+        assert!(AccountWorker::is_recoverable_error("FLOOD_WAIT triggered"));
+        // Auth/account errors require user intervention.
+        assert!(!AccountWorker::is_recoverable_error(
+            "AUTH_REVOKED: session revoked"
+        ));
+        assert!(!AccountWorker::is_recoverable_error("account banned"));
+        // Unknown errors default to non-recoverable (safer).
+        assert!(!AccountWorker::is_recoverable_error("some unknown failure"));
+    }
+
+    #[test]
+    fn parse_ban_warning_patterns_filters_disabled_and_empty() {
+        let worker = AccountWorker::new(test_config());
+        let json = r#"[
+            {"pattern":"banned","is_regex":false,"enabled":true},
+            {"pattern":"ignored","is_regex":false,"enabled":false},
+            {"pattern":"","is_regex":false,"enabled":true},
+            {"pattern":"\\d+ days","is_regex":true,"enabled":true}
+        ]"#;
+        let patterns = worker.parse_ban_warning_patterns(json);
+        assert_eq!(patterns.len(), 2);
+        assert!(patterns
+            .iter()
+            .any(|p| p.is_regex && p.compiled_regex.is_some()));
+    }
+
+    #[test]
+    fn check_ban_warning_matches_substring() {
+        let mut worker = AccountWorker::new(test_config());
+        worker.ban_warning_patterns = worker.parse_ban_warning_patterns(
+            r#"[{"pattern":"you are banned","is_regex":false,"enabled":true}]"#,
+        );
+        assert!(worker.check_ban_warning("Warning: you are banned for 3 days"));
+        assert!(!worker.check_ban_warning("nothing to see here"));
+    }
+
+    #[test]
+    fn calculate_reconnect_delay_backs_off_and_caps() {
+        let mut worker = AccountWorker::new(test_config());
+        worker.reconnect_attempts = 0;
+        let d0 = worker.calculate_reconnect_delay();
+        worker.reconnect_attempts = 1;
+        let d1 = worker.calculate_reconnect_delay();
+        assert!(d1 > d0, "delay should grow with attempts");
+        worker.reconnect_attempts = 100;
+        assert!(worker.calculate_reconnect_delay() <= TELETHON_RECONNECT_DELAY_MAX_MS);
+    }
+
+    #[test]
+    fn can_attempt_join_respects_state_and_limits() {
+        let mut worker = AccountWorker::new(test_config());
+        assert!(worker.can_attempt_join());
+
+        worker.game_state.joined = true;
+        assert!(!worker.can_attempt_join());
+        worker.game_state.joined = false;
+
+        worker.game_state.ban_warned = true;
+        assert!(!worker.can_attempt_join());
+        worker.game_state.ban_warned = false;
+
+        worker.join_attempts = worker.config.max_join_attempts;
+        assert!(!worker.can_attempt_join());
+    }
 }

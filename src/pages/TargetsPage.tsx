@@ -115,6 +115,8 @@ export default function TargetsPage() {
       <PageHeader
         title="Targets"
         description="Set per-account targeting rules for actions"
+        icon={IconTarget}
+        iconColor="text-orange-500"
       />
 
       <main className="flex-1 p-6 w-full max-w-6xl mx-auto">

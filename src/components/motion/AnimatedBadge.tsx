@@ -1,8 +1,7 @@
 /**
  * Animated status badge with pulse effects for different states
  */
-import { motion } from "motion/react";
-import { Badge } from "@/components/ui/badge";
+import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { AccountStatus } from "@/lib/types";
 
@@ -12,65 +11,91 @@ interface AnimatedBadgeProps {
 }
 
 const statusConfig: Record<AccountStatus, {
-  variant: "default" | "secondary" | "destructive" | "outline";
+  dot: string;
+  label: string;
+  className: string;
   pulse: boolean;
-  pulseColor: string;
+  pulseSpeed: number;
 }> = {
   stopped: {
-    variant: "secondary",
+    dot: "bg-muted-foreground/50",
+    label: "Stopped",
+    className: "bg-muted/60 text-muted-foreground border-border/60",
     pulse: false,
-    pulseColor: "",
+    pulseSpeed: 0,
   },
   starting: {
-    variant: "outline",
+    dot: "bg-sky-500",
+    label: "Starting",
+    className: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30",
     pulse: true,
-    pulseColor: "bg-info/50",
+    pulseSpeed: 1.2,
   },
   running: {
-    variant: "default",
+    dot: "bg-emerald-500",
+    label: "Running",
+    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
     pulse: true,
-    pulseColor: "bg-success/50",
+    pulseSpeed: 2.2,
   },
   stopping: {
-    variant: "outline",
+    dot: "bg-amber-500",
+    label: "Stopping",
+    className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
     pulse: true,
-    pulseColor: "bg-warning/50",
+    pulseSpeed: 1.0,
   },
   reconnecting: {
-    variant: "outline",
+    dot: "bg-amber-500",
+    label: "Reconnecting",
+    className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
     pulse: true,
-    pulseColor: "bg-warning/50",
+    pulseSpeed: 0.7,
   },
   error: {
-    variant: "destructive",
+    dot: "bg-destructive",
+    label: "Error",
+    className: "bg-destructive/10 text-destructive border-destructive/30",
     pulse: true,
-    pulseColor: "bg-destructive/50",
+    pulseSpeed: 0.9,
   },
 };
 
 export function AnimatedBadge({ status, className }: AnimatedBadgeProps) {
-  const config = statusConfig[status];
+  const config = statusConfig[status] ?? statusConfig["stopped"];
 
   return (
-    <div className={cn("relative inline-flex", className)}>
-      {config.pulse && (
-        <motion.span
-          className={cn(
-            "absolute inset-0 rounded-full",
-            config.pulseColor
+    <AnimatePresence mode="wait">
+      <motion.span
+        key={status}
+        initial={{ opacity: 0, scale: 0.88 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.88 }}
+        transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.5 }}
+        className={cn(
+          "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border",
+          config.className,
+          className
+        )}
+      >
+        <span className="relative flex size-1.5">
+          {config.pulse && (
+            <motion.span
+              className={cn("absolute inset-0 rounded-full", config.dot)}
+              initial={{ scale: 1, opacity: 0.7 }}
+              animate={{ scale: 3, opacity: 0 }}
+              transition={{
+                duration: config.pulseSpeed,
+                repeat: Infinity,
+                ease: [0.4, 0, 0.6, 1],
+                repeatDelay: 0.1,
+              }}
+            />
           )}
-          initial={{ scale: 1, opacity: 0.5 }}
-          animate={{ scale: 1.5, opacity: 0 }}
-          transition={{
-            duration: 1.5,
-            repeat: Infinity,
-            ease: "easeOut",
-          }}
-        />
-      )}
-      <Badge variant={config.variant} className="relative">
-        {status}
-      </Badge>
-    </div>
+          <span className={cn("relative rounded-full size-1.5", config.dot)} />
+        </span>
+        {config.label}
+      </motion.span>
+    </AnimatePresence>
   );
 }

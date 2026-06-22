@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, NoSelection } from "@/components/EmptyState";
 import { ListSkeleton } from "@/components/LoadingSkeleton";
-import { IconCopy, IconHeart, IconTarget } from "@tabler/icons-react";
+import { IconCopy, IconHeart, IconTarget, IconSettings2 } from "@tabler/icons-react";
 
 interface TargetsAccountViewProps {
   accounts: Account[];
@@ -32,6 +32,12 @@ export function TargetsAccountView({
   accountsListRef,
   actionsListRef,
 }: TargetsAccountViewProps) {
+  // useMemo must be called before any early returns (Rules of Hooks)
+  const selectedAccount = useMemo(
+    () => accounts.find((account) => account.id === selectedAccountId) ?? null,
+    [accounts, selectedAccountId]
+  );
+
   if (accountsLoading) {
     return <ListSkeleton rows={4} />;
   }
@@ -56,11 +62,6 @@ export function TargetsAccountView({
     );
   }
 
-  const selectedAccount = useMemo(
-    () => accounts.find((account) => account.id === selectedAccountId) ?? null,
-    [accounts, selectedAccountId]
-  );
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-1">
@@ -73,14 +74,18 @@ export function TargetsAccountView({
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className={`p-3 cursor-pointer hover:bg-muted/50 flex items-center justify-between ${
-                    selectedAccountId === account.id ? "bg-muted" : ""
+                  className={`p-3 cursor-pointer flex items-center justify-between transition-colors ${
+                    selectedAccountId === account.id
+                      ? "bg-primary/10 border-l-2 border-l-primary"
+                      : "hover:bg-muted/50 border-l-2 border-l-transparent"
                   }`}
                   onClick={() => onSelectAccount(account.id)}
                 >
                   <div>
-                    <div className="font-medium">{account.account_name}</div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className={`font-medium text-sm ${selectedAccountId === account.id ? "text-primary" : ""}`}>
+                      {account.account_name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
                       {account.phone || "No phone"}
                     </div>
                   </div>
@@ -92,6 +97,7 @@ export function TargetsAccountView({
                       onStartCopy(account);
                     }}
                     aria-label="Copy targets from account"
+                    className="hover:text-sky-500 hover:bg-sky-500/10"
                   >
                     <IconCopy className="size-4" />
                   </Button>
@@ -119,43 +125,52 @@ export function TargetsAccountView({
                 <div className="text-center py-4 text-muted-foreground">No actions configured yet.</div>
               ) : (
                 <div className="space-y-3" ref={actionsListRef}>
-                  {actions.map((action) => (
-                    <div
-                      key={action.id}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
-                    >
-                      <div>
-                        <div className="font-medium">{action.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {accountOverrides[action.id]?.hasTargetOverride || accountOverrides[action.id]?.hasDelayOverride
-                            ? "Using custom overrides"
-                            : "Using global defaults"}
+                  {actions.map((action) => {
+                    const hasOverride = accountOverrides[action.id]?.hasTargetOverride || accountOverrides[action.id]?.hasDelayOverride;
+                    return (
+                      <div
+                        key={action.id}
+                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div>
+                          <div className="font-medium text-sm">{action.name}</div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {hasOverride ? (
+                              <Badge variant="default" className="text-xs h-4 px-1.5 bg-violet-500/15 text-violet-600 dark:text-violet-400 border border-violet-500/30 hover:bg-violet-500/20">
+                                Custom
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Default</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary" className="text-xs">
+                            {action.button_type === "player_list"
+                              ? "Player List"
+                              : action.button_type === "yes_no"
+                              ? "Yes/No"
+                              : "Fixed"}
+                          </Badge>
+                          {action.is_two_step && (
+                            <Badge variant="outline" className="text-xs text-pink-500 border-pink-500/50">
+                              <IconHeart className="size-3 mr-1" />
+                              Two-Step
+                            </Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => onOpenConfig(selectedAccount.id, selectedAccount.account_name, action)}
+                            aria-label="Configure targets"
+                            className="hover:text-violet-500 hover:bg-violet-500/10"
+                          >
+                            <IconSettings2 className="size-4" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">
-                          {action.button_type === "player_list"
-                            ? "Player List"
-                            : action.button_type === "yes_no"
-                            ? "Yes/No"
-                            : "Fixed"}
-                        </Badge>
-                        {action.is_two_step && (
-                          <Badge variant="outline" className="text-pink-500 border-pink-500">
-                            <IconHeart className="size-3 mr-1" />
-                            Two-Step
-                          </Badge>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onOpenConfig(selectedAccount.id, selectedAccount.account_name, action)}
-                        >
-                          Configure
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

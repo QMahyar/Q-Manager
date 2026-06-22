@@ -59,8 +59,11 @@ pub fn phase_pattern_delete(pattern_id: i64) -> CommandResult<()> {
 
 #[command]
 pub fn phase_update_priority(phase_id: i64, priority: i32) -> CommandResult<Phase> {
+    validate_priority(priority).map_err(error_response)?;
+
     let conn = db::get_conn().map_err(error_response)?;
     db::update_phase_priority(&conn, phase_id, priority).map_err(error_response)?;
+    let _ = db::bump_phase_version(&conn);
 
     // Return the updated phase
     let phases = db::list_phases(&conn).map_err(error_response)?;

@@ -4,7 +4,7 @@
 
 mod commands;
 pub mod constants;
-mod db;
+pub(crate) mod db;
 pub mod errors;
 pub mod events;
 mod ipc;
@@ -52,6 +52,23 @@ pub fn run() {
             }
         }))
         .setup(move |app| {
+            // Reset any accounts that were left in a non-stopped state from a previous run
+            // (e.g., app crashed while workers were running)
+            if let Ok(conn) = db::get_conn() {
+                if let Ok(accounts) = db::list_accounts(&conn) {
+                    for account in accounts {
+                        if account.status != "stopped" && account.status != "error" {
+                            log::info!(
+                                "Resetting stale status '{}' → 'stopped' for account: {}",
+                                account.status,
+                                account.account_name
+                            );
+                            let _ = db::update_account_status(&conn, account.id, "stopped");
+                        }
+                    }
+                }
+            }
+
             // Check Telethon worker
             match telethon::assert_worker_exists() {
                 Ok(()) => log::info!("Telethon worker available"),
@@ -92,6 +109,7 @@ pub fn run() {
             account_update,
             account_get,
             account_name_exists,
+            account_refresh_session,
             // Phases
             phases_list,
             phase_patterns_list,

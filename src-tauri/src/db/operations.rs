@@ -104,12 +104,12 @@ pub fn get_settings(conn: &Connection) -> Result<Settings> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsUpdate {
-    pub api_id: Option<i64>,
-    pub api_hash: Option<String>,
-    pub main_bot_user_id: Option<i64>,
-    pub main_bot_username: Option<String>,
-    pub beta_bot_user_id: Option<i64>,
-    pub beta_bot_username: Option<String>,
+    pub api_id: Option<Option<i64>>,
+    pub api_hash: Option<Option<String>>,
+    pub main_bot_user_id: Option<Option<i64>>,
+    pub main_bot_username: Option<Option<String>>,
+    pub beta_bot_user_id: Option<Option<i64>>,
+    pub beta_bot_username: Option<Option<String>>,
     pub join_max_attempts_default: Option<i32>,
     pub join_cooldown_seconds_default: Option<i32>,
     pub ban_warning_patterns_json: Option<String>,
@@ -119,29 +119,37 @@ pub struct SettingsUpdate {
 }
 
 pub fn update_settings(conn: &Connection, update: &SettingsUpdate) -> Result<()> {
+    // Nullable fields need explicit presence flags so omitted properties keep their old values
+    // while explicit `null` clears the column.
     conn.execute(
         "UPDATE settings SET
-            api_id = COALESCE(?1, api_id),
-            api_hash = COALESCE(?2, api_hash),
-            main_bot_user_id = COALESCE(?3, main_bot_user_id),
-            main_bot_username = COALESCE(?4, main_bot_username),
-            beta_bot_user_id = COALESCE(?5, beta_bot_user_id),
-            beta_bot_username = COALESCE(?6, beta_bot_username),
-            join_max_attempts_default = COALESCE(?7, join_max_attempts_default),
-            join_cooldown_seconds_default = COALESCE(?8, join_cooldown_seconds_default),
-            ban_warning_patterns_json = COALESCE(?9, ban_warning_patterns_json),
-            theme_mode = COALESCE(?10, theme_mode),
-            theme_palette = COALESCE(?11, theme_palette),
-            theme_variant = COALESCE(?12, theme_variant),
+            api_id = CASE WHEN ?1 THEN ?2 ELSE api_id END,
+            api_hash = CASE WHEN ?3 THEN ?4 ELSE api_hash END,
+            main_bot_user_id = CASE WHEN ?5 THEN ?6 ELSE main_bot_user_id END,
+            main_bot_username = CASE WHEN ?7 THEN ?8 ELSE main_bot_username END,
+            beta_bot_user_id = CASE WHEN ?9 THEN ?10 ELSE beta_bot_user_id END,
+            beta_bot_username = CASE WHEN ?11 THEN ?12 ELSE beta_bot_username END,
+            join_max_attempts_default = COALESCE(?13, join_max_attempts_default),
+            join_cooldown_seconds_default = COALESCE(?14, join_cooldown_seconds_default),
+            ban_warning_patterns_json = COALESCE(?15, ban_warning_patterns_json),
+            theme_mode = COALESCE(?16, theme_mode),
+            theme_palette = COALESCE(?17, theme_palette),
+            theme_variant = COALESCE(?18, theme_variant),
             updated_at = datetime('now')
          WHERE id = 1",
         params![
-            update.api_id,
-            update.api_hash,
-            update.main_bot_user_id,
-            update.main_bot_username,
-            update.beta_bot_user_id,
-            update.beta_bot_username,
+            update.api_id.is_some(),
+            update.api_id.flatten(),
+            update.api_hash.is_some(),
+            update.api_hash.clone().flatten(),
+            update.main_bot_user_id.is_some(),
+            update.main_bot_user_id.flatten(),
+            update.main_bot_username.is_some(),
+            update.main_bot_username.clone().flatten(),
+            update.beta_bot_user_id.is_some(),
+            update.beta_bot_user_id.flatten(),
+            update.beta_bot_username.is_some(),
+            update.beta_bot_username.clone().flatten(),
             update.join_max_attempts_default,
             update.join_cooldown_seconds_default,
             update.ban_warning_patterns_json,
@@ -150,6 +158,30 @@ pub fn update_settings(conn: &Connection, update: &SettingsUpdate) -> Result<()>
             update.theme_variant,
         ],
     )?;
+    Ok(())
+}
+
+/// Clear a nullable settings field (e.g., set api_id back to NULL).
+/// This is needed because `update_settings` uses COALESCE which cannot clear fields.
+#[allow(dead_code)]
+pub fn clear_settings_field(conn: &Connection, field: &str) -> Result<()> {
+    // Only allow known safe column names to prevent SQL injection
+    let allowed_fields = [
+        "api_id",
+        "api_hash",
+        "main_bot_user_id",
+        "main_bot_username",
+        "beta_bot_user_id",
+        "beta_bot_username",
+    ];
+    if !allowed_fields.contains(&field) {
+        return Err(rusqlite::Error::InvalidParameterName(field.to_string()));
+    }
+    let sql = format!(
+        "UPDATE settings SET {} = NULL, updated_at = datetime('now') WHERE id = 1",
+        field
+    );
+    conn.execute(&sql, [])?;
     Ok(())
 }
 
@@ -252,6 +284,44 @@ pub fn update_account_status(conn: &Connection, account_id: i64, status: &str) -
         params![status, account_id],
     )?;
     Ok(())
+}
+
+// ============================================================================
+// Ban Warning Patterns
+// ============================================================================
+
+/// Typed representation of a ban warning pattern stored as JSON in the settings row.
+/// The DB column `ban_warning_patterns_json` holds a JSON array of these structs.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Used by workers/detection pipeline via JSON deserialization
+pub struct BanWarningPattern {
+    pub pattern: String,
+    pub is_regex: bool,
+    pub enabled: bool,
+    pub priority: i32,
+}
+
+/// Parse the `ban_warning_patterns_json` column into a typed list.
+/// Returns an empty vec if the value is null, empty, or invalid JSON so that
+/// callers are always guaranteed a valid (possibly empty) result.
+#[allow(dead_code)]
+pub fn parse_ban_warning_patterns(json: &str) -> Vec<BanWarningPattern> {
+    if json.trim().is_empty() {
+        return Vec::new();
+    }
+    match serde_json::from_str::<Vec<BanWarningPattern>>(json) {
+        Ok(patterns) => patterns,
+        Err(e) => {
+            log::warn!("Failed to parse ban_warning_patterns_json: {}", e);
+            Vec::new()
+        }
+    }
+}
+
+/// Serialize a list of `BanWarningPattern` to the JSON string stored in the DB.
+#[allow(dead_code)]
+pub fn serialize_ban_warning_patterns(patterns: &[BanWarningPattern]) -> String {
+    serde_json::to_string(patterns).unwrap_or_else(|_| "[]".to_string())
 }
 
 // ============================================================================
@@ -721,6 +791,29 @@ pub fn update_last_seen(conn: &Connection, account_id: i64) -> Result<()> {
         params![account_id],
     )?;
     Ok(())
+}
+
+/// Get enabled group slots for an account (returns group_id, moderator_kind, group_title)
+pub fn get_enabled_group_slots(
+    conn: &Connection,
+    account_id: i64,
+) -> Result<Vec<(i64, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT group_id, moderator_kind, COALESCE(group_title, '') \
+         FROM account_group_slots \
+         WHERE account_id = ?1 AND enabled = 1 AND group_id IS NOT NULL",
+    )?;
+    let rows = stmt
+        .query_map([account_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }
 
 /// Update phase priority

@@ -34,12 +34,12 @@ mod tests {
         let conn = create_test_db();
 
         let update = SettingsUpdate {
-            api_id: Some(12345),
-            api_hash: Some("test_hash".to_string()),
-            main_bot_user_id: Some(111111),
-            main_bot_username: Some("test_bot".to_string()),
-            beta_bot_user_id: None,
-            beta_bot_username: None,
+            api_id: Some(Some(12345)),
+            api_hash: Some(Some("test_hash".to_string())),
+            main_bot_user_id: Some(Some(111111)),
+            main_bot_username: Some(Some("test_bot".to_string())),
+            beta_bot_user_id: Some(None),
+            beta_bot_username: Some(None),
             join_max_attempts_default: Some(10),
             join_cooldown_seconds_default: Some(3),
             ban_warning_patterns_json: None,
@@ -56,6 +56,57 @@ mod tests {
         assert_eq!(settings.main_bot_user_id, Some(111111));
         assert_eq!(settings.join_max_attempts_default, 10);
         assert_eq!(settings.join_cooldown_seconds_default, 3);
+
+        // Verify that omitted (None) fields preserve their current value unchanged
+        assert_eq!(settings.ban_warning_patterns_json, "[]");
+        assert_eq!(settings.theme_mode, "system");
+    }
+
+    #[test]
+    fn test_settings_clear_nullable() {
+        let conn = create_test_db();
+
+        // First set some values
+        let update = SettingsUpdate {
+            api_id: Some(Some(99999)),
+            api_hash: Some(Some("hash_to_clear".to_string())),
+            main_bot_user_id: Some(Some(555555)),
+            main_bot_username: Some(Some("clear_me".to_string())),
+            beta_bot_user_id: Some(None),
+            beta_bot_username: Some(None),
+            join_max_attempts_default: None,
+            join_cooldown_seconds_default: None,
+            ban_warning_patterns_json: None,
+            theme_mode: None,
+            theme_palette: None,
+            theme_variant: None,
+        };
+        update_settings(&conn, &update).unwrap();
+
+        // Now clear them explicitly
+        let clear = SettingsUpdate {
+            api_id: Some(None),
+            api_hash: Some(None),
+            main_bot_user_id: Some(None),
+            main_bot_username: Some(None),
+            beta_bot_user_id: Some(None),
+            beta_bot_username: Some(None),
+            join_max_attempts_default: None,
+            join_cooldown_seconds_default: None,
+            ban_warning_patterns_json: None,
+            theme_mode: None,
+            theme_palette: None,
+            theme_variant: None,
+        };
+        update_settings(&conn, &clear).unwrap();
+
+        let settings = get_settings(&conn).unwrap();
+        assert_eq!(settings.api_id, None);
+        assert_eq!(settings.api_hash, None);
+        assert_eq!(settings.main_bot_user_id, None);
+        assert_eq!(settings.main_bot_username, None);
+        assert_eq!(settings.beta_bot_user_id, None);
+        assert_eq!(settings.beta_bot_username, None);
     }
 
     #[test]

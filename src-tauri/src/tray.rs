@@ -14,6 +14,7 @@ use tauri::{
     AppHandle, Emitter, Manager, Runtime,
 };
 use crate::db;
+use crate::ipc;
 
 /// Global tray icon reference for dynamic updates
 static TRAY_ICON: OnceCell<Mutex<Option<TrayIcon<tauri::Wry>>>> = OnceCell::new();
@@ -122,14 +123,16 @@ pub fn build_tray_menu<R: Runtime>(
 ) -> Result<Menu<R>, Box<dyn std::error::Error>> {
     let accounts = get_accounts();
 
-    // Separate running and stopped accounts
+    // Separate startable and stoppable accounts
+    // Startable: stopped or error → can be started
+    // Stoppable: running, starting, or stopping → can be stopped
     let stopped_accounts: Vec<_> = accounts
         .iter()
         .filter(|a| a.status == "stopped" || a.status == "error")
         .collect();
     let running_accounts: Vec<_> = accounts
         .iter()
-        .filter(|a| a.status == "running" || a.status == "starting")
+        .filter(|a| matches!(a.status.as_str(), "running" | "starting" | "stopping"))
         .collect();
 
     // Create menu items
@@ -279,14 +282,14 @@ fn build_tray_menu_for_handle(
 ) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let accounts = get_accounts();
 
-    // Separate running and stopped accounts
+    // Separate startable and stoppable accounts
     let stopped_accounts: Vec<_> = accounts
         .iter()
         .filter(|a| a.status == "stopped" || a.status == "error")
         .collect();
     let running_accounts: Vec<_> = accounts
         .iter()
-        .filter(|a| a.status == "running" || a.status == "starting")
+        .filter(|a| matches!(a.status.as_str(), "running" | "starting" | "stopping"))
         .collect();
 
     // Create menu items
@@ -425,24 +428,22 @@ fn handle_menu_event<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) {
         }
         "start_all" => {
             log::info!("Start all accounts requested from tray");
-            // Emit event to frontend to handle
-            let _ = app.emit("tray-start-all", ());
+            let _ = app.emit(ipc::EVENT_TRAY_START_ALL, ());
         }
         "stop_all" => {
             log::info!("Stop all accounts requested from tray");
-            // Emit event to frontend to handle
-            let _ = app.emit("tray-stop-all", ());
+            let _ = app.emit(ipc::EVENT_TRAY_STOP_ALL, ());
         }
         id if id.starts_with("start_") => {
             if let Ok(account_id) = id.trim_start_matches("start_").parse::<i64>() {
                 log::info!("Start account {} requested from tray", account_id);
-                let _ = app.emit("tray-start-account", account_id);
+                let _ = app.emit(ipc::EVENT_TRAY_START_ACCOUNT, account_id);
             }
         }
         id if id.starts_with("stop_") => {
             if let Ok(account_id) = id.trim_start_matches("stop_").parse::<i64>() {
                 log::info!("Stop account {} requested from tray", account_id);
-                let _ = app.emit("tray-stop-account", account_id);
+                let _ = app.emit(ipc::EVENT_TRAY_STOP_ACCOUNT, account_id);
             }
         }
         _ => {}

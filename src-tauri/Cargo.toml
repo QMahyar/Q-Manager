@@ -2,7 +2,9 @@
 name = "q-manager"
 version = "1.0.1"
 description = "Q Manager - Werewolf Game Automation"
-authors = ["you"]
+authors = ["Mahyar"]
+license = "MIT"
+repository = "https://github.com/QMahyar/Q-Manager"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

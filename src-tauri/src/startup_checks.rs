@@ -446,20 +446,15 @@ pub fn check_system() -> StartupCheckResult {
 // ============================================================================
 
 fn get_sessions_dir() -> PathBuf {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    exe_dir.join("sessions")
+    crate::utils::fs::get_sessions_dir()
 }
 
 fn get_account_and_settings(account_id: i64) -> Result<(db::Account, db::Settings), String> {
     let conn = db::get_conn().map_err(|e| e.to_string())?;
 
-    let accounts = db::list_accounts(&conn).map_err(|e| e.to_string())?;
-    let account = accounts
-        .into_iter()
-        .find(|a| a.id == account_id)
+    // Use get_account (single-row lookup by PK) instead of list_accounts + find
+    let account = db::get_account(&conn, account_id)
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Account {} not found", account_id))?;
 
     let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;

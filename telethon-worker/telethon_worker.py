@@ -17,6 +17,7 @@ class WorkerState:
     client: Optional[TelegramClient] = None
     authorized: bool = False
     user: Optional[Dict[str, Any]] = None
+    should_exit: bool = False
 
 
 async def write_response(payload: Dict[str, Any]) -> None:
@@ -304,6 +305,9 @@ async def handle_command(state: WorkerState, request: Dict[str, Any], event_queu
             if state.client:
                 await state.client.disconnect()
             await write_response(build_ok(request_id, {}))
+            # Signal the main loop to exit so the process terminates promptly
+            # instead of waiting to be force-killed.
+            state.should_exit = True
             return
 
         await write_response(build_error(request_id, f"Unknown command: {command}"))
@@ -337,6 +341,8 @@ async def main() -> None:
         except json.JSONDecodeError:
             continue
         await handle_command(state, request, event_queue)
+        if state.should_exit:
+            break
 
     event_task.cancel()
 

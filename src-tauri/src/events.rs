@@ -175,38 +175,34 @@ impl<R: Runtime> EventEmitter<R> {
 // ============================================================================
 
 use once_cell::sync::OnceCell;
-use std::sync::Mutex;
 
-/// Global app handle for emitting events
-static GLOBAL_APP: OnceCell<Mutex<Option<AppHandle<tauri::Wry>>>> = OnceCell::new();
+/// Global app handle for emitting events.
+/// AppHandle is Clone + Send + Sync so no Mutex is needed.
+static GLOBAL_APP: OnceCell<AppHandle<tauri::Wry>> = OnceCell::new();
 
 /// Initialize the global app handle (call from setup)
 pub fn init_global_emitter(app: AppHandle<tauri::Wry>) {
-    let _ = GLOBAL_APP.set(Mutex::new(Some(app)));
+    let _ = GLOBAL_APP.set(app);
+}
+
+/// Get the global app handle (cloned, so no lock required)
+fn get_global_app() -> Option<AppHandle<tauri::Wry>> {
+    GLOBAL_APP.get().cloned()
 }
 
 /// Get the global event emitter
 pub fn global_emitter() -> Option<EventEmitter<tauri::Wry>> {
-    GLOBAL_APP
-        .get()
-        .and_then(|m| m.lock().ok())
-        .and_then(|guard| guard.clone())
-        .map(EventEmitter::new)
+    get_global_app().map(EventEmitter::new)
 }
 
 /// Emit account status change (global)
 pub fn emit_account_status(account_id: i64, status: &str, message: Option<String>) {
-    if let Some(emitter) = global_emitter() {
-        emitter.account_status(account_id, status, message.clone());
-    }
-
-    // Refresh tray menu when account status changes
-    if let Some(app_mutex) = GLOBAL_APP.get() {
-        if let Ok(guard) = app_mutex.lock() {
-            if let Some(app) = guard.as_ref() {
-                crate::tray::refresh_tray_menu(app);
-            }
-        }
+    // Acquire the app handle once to avoid locking GLOBAL_APP twice
+    // (once for the emitter and once for tray refresh).
+    if let Some(app) = get_global_app() {
+        let emitter = EventEmitter::new(app.clone());
+        emitter.account_status(account_id, status, message);
+        crate::tray::refresh_tray_menu(&app);
     }
 }
 
@@ -258,11 +254,7 @@ pub fn emit_regex_validation(scope: &str, pattern: &str, error: &str) {
 
 /// Emit a generic event (global)
 pub fn emit_event<T: serde::Serialize + Clone>(event_name: &str, payload: T) {
-    if let Some(app_mutex) = GLOBAL_APP.get() {
-        if let Ok(guard) = app_mutex.lock() {
-            if let Some(app) = guard.as_ref() {
-                let _ = app.emit(event_name, payload);
-            }
-        }
+    if let Some(app) = GLOBAL_APP.get() {
+        let _ = app.emit(event_name, payload);
     }
 }

@@ -61,8 +61,9 @@ export function useActionPatterns(actionId: number | null) {
 
   const updateMutation = useMutation({
     mutationFn: updateActionPattern,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["action-patterns", actionId] });
+    onSuccess: (data) => {
+      // Use the returned pattern's action_id — not the potentially-stale closure value
+      queryClient.invalidateQueries({ queryKey: ["action-patterns", data.action_id] });
       toast.success("Pattern updated");
     },
     onError: (error) => {
@@ -71,9 +72,11 @@ export function useActionPatterns(actionId: number | null) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteActionPattern,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["action-patterns", actionId] });
+    mutationFn: ({ patternId }: { patternId: number; actionId: number }) =>
+      deleteActionPattern(patternId),
+    onSuccess: (_, variables) => {
+      // Use variables.actionId so we don't capture a stale closure value
+      queryClient.invalidateQueries({ queryKey: ["action-patterns", variables.actionId] });
       toast.success("Pattern deleted");
     },
     onError: (error) => {
@@ -90,14 +93,15 @@ export function useActionPatterns(actionId: number | null) {
 }
 
 export function useActionPatternCounts(actionIds: number[]) {
+  // Sort IDs for a stable query key regardless of input order
+  const stableKey = [...actionIds].sort((a, b) => a - b).join(",");
   return useQuery({
-    queryKey: ["action-pattern-counts", actionIds.join(",")],
+    queryKey: ["action-pattern-counts", stableKey],
     queryFn: async () => {
+      // Fetch all pattern lists in parallel instead of sequentially
+      const results = await Promise.all(actionIds.map((id) => listActionPatterns(id)));
       const counts: Record<number, number> = {};
-      for (const actionId of actionIds) {
-        const patterns = await listActionPatterns(actionId);
-        counts[actionId] = patterns.length;
-      }
+      actionIds.forEach((id, i) => { counts[id] = results[i].length; });
       return counts;
     },
     enabled: actionIds.length > 0,

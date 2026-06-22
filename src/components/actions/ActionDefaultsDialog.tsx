@@ -19,7 +19,6 @@ interface ActionDefaultsDialogProps {
   defaultDelayMax: number;
   newTargetInput: string;
   onUpdateFixedText: (value: string) => void;
-  onUpdateTargets: (targets: string[]) => void;
   onUpdateRandomFallback: (value: boolean) => void;
   onUpdateDelayMin: (value: number) => void;
   onUpdateDelayMax: (value: number) => void;
@@ -41,7 +40,6 @@ export function ActionDefaultsDialog({
   defaultDelayMax,
   newTargetInput,
   onUpdateFixedText,
-  onUpdateTargets,
   onUpdateRandomFallback,
   onUpdateDelayMin,
   onUpdateDelayMax,

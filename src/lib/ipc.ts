@@ -56,6 +56,7 @@ export const IPC_COMMANDS = {
   accountExport: "account_export",
   accountSessionPath: "account_session_path",
   accountGet: "account_get",
+  accountRefreshSession: "account_refresh_session",
   accountNameExists: "account_name_exists",
   accountUpdate: "account_update",
   groupSlotsGet: "group_slots_get",
@@ -78,6 +79,9 @@ export const IPC_COMMANDS = {
   loginCancel: "login_cancel",
 } as const;
 
+/** Union type of all valid IPC command string values — use for typed `invoke` wrappers */
+export type IpcCommandName = (typeof IPC_COMMANDS)[keyof typeof IPC_COMMANDS];
+
 export const IPC_EVENTS = {
   accountStatus: "account-status",
   phaseDetected: "phase-detected",
@@ -86,4 +90,12 @@ export const IPC_EVENTS = {
   accountLog: "account-log",
   regexValidationError: "regex-validation-error",
   loginProgress: "login-progress",
+  // Tray events emitted by the Rust backend, listened to by the frontend
+  trayStartAccount: "tray-start-account",
+  trayStopAccount: "tray-stop-account",
+  trayStartAll: "tray-start-all",
+  trayStopAll: "tray-stop-all",
 } as const;
+
+/** Union type of all valid IPC event name string values */
+export type IpcEventName = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];

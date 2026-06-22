@@ -27,7 +27,7 @@ interface TooltipTriggerProps {
 const TooltipTrigger = React.forwardRef<HTMLSpanElement, TooltipTriggerProps>(
   ({ children, asChild, ...props }, ref) => {
     if (asChild && React.isValidElement(children)) {
-      const child = children as React.ReactElement<{ className?: string }>;
+      const child = children as React.ReactElement<{ className?: string; ref?: React.Ref<unknown> }>;
       return React.cloneElement(child, {
         ...props,
         ref,

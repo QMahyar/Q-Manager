@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { IconClipboard, IconCopy } from "@tabler/icons-react";
+import { IconClipboard, IconCopy, IconAlertTriangle } from "@tabler/icons-react";
 import type { Account, Action } from "@/lib/types";
 
 interface TargetsCopyDialogsProps {
@@ -47,14 +47,22 @@ export function TargetsCopyDialogs({
               Select which action targets to copy from "{copiedFromAccount?.account_name}".
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4 max-h-64 overflow-y-auto">
+          <div className="py-2 max-h-64 overflow-y-auto space-y-1">
             {actions.map((action) => (
-              <div key={action.id} className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded">
+              <div
+                key={action.id}
+                className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                  selectedActionsToCopy.has(action.id)
+                    ? "bg-primary/10 border border-primary/20"
+                    : "hover:bg-muted/50 border border-transparent"
+                }`}
+                onClick={() => onToggleActionToCopy(action.id)}
+              >
                 <Checkbox
                   checked={selectedActionsToCopy.has(action.id)}
                   onCheckedChange={() => onToggleActionToCopy(action.id)}
                 />
-                <span>{action.name}</span>
+                <span className="text-sm font-medium">{action.name}</span>
               </div>
             ))}
           </div>
@@ -63,8 +71,8 @@ export function TargetsCopyDialogs({
               Cancel
             </Button>
             <Button onClick={onCopy} disabled={selectedActionsToCopy.size === 0}>
-              <IconCopy className="size-4 mr-1" />
-              Copy ({selectedActionsToCopy.size})
+              <IconCopy className="size-4 mr-1.5" />
+              Copy {selectedActionsToCopy.size > 0 ? `(${selectedActionsToCopy.size})` : ""}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -78,26 +86,42 @@ export function TargetsCopyDialogs({
               Select accounts to paste targets to. This will overwrite existing targets.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4 max-h-64 overflow-y-auto">
-            {accounts
-              .filter((a) => a.id !== copiedFromAccount?.id)
-              .map((account) => (
-                <div key={account.id} className="flex items-center gap-3 p-2 hover:bg-muted/50 rounded">
-                  <Checkbox
-                    checked={selectedAccountsToPaste.has(account.id)}
-                    onCheckedChange={() => onToggleAccountToPaste(account.id)}
-                  />
-                  <span>{account.account_name}</span>
-                </div>
-              ))}
+          <div className="py-2 space-y-3">
+            <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+              <IconAlertTriangle className="size-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                This will overwrite existing target settings on selected accounts.
+              </p>
+            </div>
+            <div className="max-h-56 overflow-y-auto space-y-1">
+              {accounts
+                .filter((a) => a.id !== copiedFromAccount?.id)
+                .map((account) => (
+                  <div
+                    key={account.id}
+                    className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                      selectedAccountsToPaste.has(account.id)
+                        ? "bg-primary/10 border border-primary/20"
+                        : "hover:bg-muted/50 border border-transparent"
+                    }`}
+                    onClick={() => onToggleAccountToPaste(account.id)}
+                  >
+                    <Checkbox
+                      checked={selectedAccountsToPaste.has(account.id)}
+                      onCheckedChange={() => onToggleAccountToPaste(account.id)}
+                    />
+                    <span className="text-sm font-medium">{account.account_name}</span>
+                  </div>
+                ))}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => onPasteDialogOpenChange(false)}>
               Cancel
             </Button>
             <Button onClick={onPaste} disabled={selectedAccountsToPaste.size === 0 || pasting}>
-              <IconClipboard className="size-4 mr-1" />
-              {pasting ? "Pasting..." : `Paste to (${selectedAccountsToPaste.size}) accounts`}
+              <IconClipboard className="size-4 mr-1.5" />
+              {pasting ? "Pasting..." : `Paste to ${selectedAccountsToPaste.size > 0 ? `${selectedAccountsToPaste.size} ` : ""}accounts`}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -130,6 +130,14 @@ export interface AccountCreate {
   api_hash_override?: string | null;
 }
 
+export interface AccountUpdate {
+  account_name?: string | null;
+  api_id_override?: number | null;
+  api_hash_override?: string | null;
+  join_max_attempts_override?: number | null;
+  join_cooldown_seconds_override?: number | null;
+}
+
 export interface GroupSlot {
   id: number;
   account_id: number;
@@ -265,17 +273,6 @@ export interface TargetPair {
 }
 
 // ============================================================================
-// Diagnostics
-// ============================================================================
-
-export interface DiagnosticsSnapshot {
-  timestamp_ms: number;
-  uptime_ms: number;
-  total_workers: number;
-  running_workers: number;
-}
-
-// ============================================================================
 // Action Mutation Payloads (for type-safe mutations)
 // ============================================================================
 
@@ -294,4 +291,123 @@ export interface ActionPatternUpdate {
   enabled?: boolean;
   priority?: number;
   step?: number;
+}
+
+// ============================================================================
+// Phase Mutation Payloads
+// ============================================================================
+
+export interface PhasePatternUpdate {
+  id: number;
+  pattern: string;
+  is_regex: boolean;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface PhasePriorityUpdate {
+  phaseId: number;
+  priority: number;
+}
+
+// ============================================================================
+// Group Slots
+// ============================================================================
+
+export interface GroupSlotUpdate {
+  enabled?: boolean;
+  group_id?: number | null;
+  group_title?: string | null;
+  moderator_kind?: 'main' | 'beta';
+}
+
+// ============================================================================
+// Import/Export
+// ============================================================================
+
+export interface ImportResult {
+  success: boolean;
+  account_id: number | null;
+  account_name: string;
+  message: string;
+}
+
+export interface ImportCandidate {
+  source_path: string;
+  account_name: string;
+}
+
+export interface ImportConflict {
+  source_path: string;
+  account_name: string;
+  existing_account_id: number;
+  existing_account_name: string;
+  existing_user_id: number | null;
+  existing_phone: string | null;
+  existing_last_seen_at: string | null;
+}
+
+export interface ImportPreflight {
+  conflicts: ImportConflict[];
+  candidates: ImportCandidate[];
+}
+
+export type ImportAction = "rename" | "replace" | "skip" | "cancel";
+
+export interface SessionRefreshResult {
+  account_id: number;
+  updated: boolean;
+  user_id: number | null;
+  phone: string | null;
+  telegram_name: string | null;
+  message: string;
+}
+
+export interface ImportResolution {
+  source_path: string;
+  account_name: string;
+  action: ImportAction;
+  new_name?: string | null;
+  existing_account_id?: number | null;
+}
+
+export interface PatternExport {
+  version: number;
+  phase_patterns: PatternPhaseRow[];
+  action_patterns: PatternActionRow[];
+}
+
+export interface PatternPhaseRow {
+  phase_id?: number | null;
+  phase_name?: string | null;
+  pattern: string;
+  is_regex: boolean;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface PatternActionRow {
+  action_id?: number | null;
+  action_name?: string | null;
+  step: number;
+  pattern: string;
+  is_regex: boolean;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface PatternImportResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  skipped_items: string[];
+}
+
+// ============================================================================
+// Telegram
+// ============================================================================
+
+export interface TelegramGroup {
+  id: number;
+  title: string;
 }

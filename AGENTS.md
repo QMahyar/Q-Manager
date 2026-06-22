@@ -372,7 +372,7 @@ WORKER_MANAGER.start_account(account_id).await?;
 WORKER_MANAGER.stop_account(account_id).await?;
 ```
 
-Timeout: 10 seconds (configurable in `constants.rs`)
+Timeout: 5 seconds (configurable in `constants.rs`)
 
 #### Reloading Patterns
 
@@ -984,8 +984,8 @@ pub struct WorkerHandle {
 // Send shutdown signal
 command_tx.send(WorkerCommand::Shutdown).await;
 
-// Wait up to 10 seconds
-let timeout = Duration::from_secs(10);
+// Wait up to 5 seconds
+let timeout = Duration::from_secs(5);
 loop {
     if worker_removed { break; }
     if elapsed > timeout { break; }

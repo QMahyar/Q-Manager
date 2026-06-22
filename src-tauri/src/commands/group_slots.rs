@@ -132,8 +132,8 @@ pub fn group_slot_update(payload: GroupSlotUpdate) -> CommandResult<GroupSlot> {
 pub fn group_slots_init(account_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
 
-    // Create slot 0 and 1 if they don't exist (0-indexed to match import_export.rs)
-    for slot in 0..=1 {
+    // Create slots 1 and 2 if they don't exist (valid slot numbers are 1 and 2)
+    for slot in 1..=2 {
         let exists: bool = conn
             .query_row(
                 "SELECT 1 FROM account_group_slots WHERE account_id = ?1 AND slot = ?2",
@@ -233,7 +233,10 @@ pub async fn account_fetch_groups(account_id: i64) -> CommandResult<Vec<Telegram
 
     let response = client
         .request("list_groups", serde_json::json!({}))
-        .map_err(error_response)?;
+        .map_err(|e| { let _ = client.shutdown(); error_response(e) })?;
+
+    let _ = client.shutdown();
+
     if !response.ok {
         return Err(error_response(
             response

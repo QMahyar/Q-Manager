@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PageTransition } from "@/components/motion/PageTransition";
+import { motion } from "motion/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,10 +13,18 @@ import {
   IconRefresh,
   IconDownload,
   IconUpload,
+  IconDotsVertical,
+  IconHandClick,
 } from "@tabler/icons-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionDialogs } from "@/components/actions/ActionDialogs";
@@ -135,10 +144,16 @@ export default function ActionsPage() {
     try {
       const targetDefault = await getTargetDefault(action.id);
       if (targetDefault?.rule_json) {
-        const rule = JSON.parse(targetDefault.rule_json);
-        setDefaultTargets(rule.targets || []);
-        setDefaultRandomFallback(rule.random_fallback ?? true);
-        setDefaultFixedText(rule.fixed_text || "");
+        try {
+          const rule = JSON.parse(targetDefault.rule_json);
+          setDefaultTargets(rule.targets || []);
+          setDefaultRandomFallback(rule.random_fallback ?? true);
+          setDefaultFixedText(rule.fixed_text || "");
+        } catch {
+          setDefaultTargets([]);
+          setDefaultRandomFallback(true);
+          setDefaultFixedText("");
+        }
       } else {
         setDefaultTargets([]);
         setDefaultRandomFallback(true);
@@ -253,19 +268,18 @@ export default function ActionsPage() {
   };
 
   const handleDeleteAction = () => {
-    if (actionToDelete) {
-      deleteActionMutation.mutate(actionToDelete.id, {
-        onSuccess: () => {
-          if (expandedActionId === actionToDelete.id) {
-            setExpandedActionId(null);
-          }
-        },
-        onSettled: () => {
-          setDeleteActionOpen(false);
-          setActionToDelete(null);
-        },
-      });
-    }
+    if (!actionToDelete) return;
+    deleteActionMutation.mutate(actionToDelete.id, {
+      onSuccess: () => {
+        if (expandedActionId === actionToDelete.id) {
+          setExpandedActionId(null);
+        }
+      },
+      onSettled: () => {
+        setDeleteActionOpen(false);
+        setActionToDelete(null);
+      },
+    });
   };
   
   const handleAddPattern = () => {
@@ -356,7 +370,7 @@ export default function ActionsPage() {
         })
       }
       onEditPattern={openEditPattern}
-      onDeletePattern={(patternId) => deletePatternMutation.mutate(patternId)}
+      onDeletePattern={(patternId) => deletePatternMutation.mutate({ patternId, actionId: action.id })}
     />
   );
 
@@ -365,111 +379,72 @@ export default function ActionsPage() {
       <PageHeader
         title="Actions"
         description="Define action triggers and button types"
+        icon={IconHandClick}
+        iconColor="text-emerald-500"
       >
-        <div className="flex items-start gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2">
           {regexIssues.length > 0 && (
-            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive max-w-sm">
-              <div className="font-medium">Invalid regex patterns detected</div>
-              <ul className="mt-2 list-disc pl-5 space-y-1">
-                {regexIssues.map((issue, index) => (
-                  <li key={`${issue.scope}-${issue.pattern}-${index}`}>
-                    {issue.scope}: {issue.pattern} — {issue.error}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-2">
-                <Button variant="outline" size="sm" onClick={() => setRegexIssues([])}>
-                  Clear
-                </Button>
-              </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs cursor-pointer" onClick={() => setRegexIssues([])}>
+              <IconBolt className="size-3.5 shrink-0" />
+              <span className="font-semibold">{regexIssues.length} regex error{regexIssues.length > 1 ? "s" : ""}</span>
+              <span className="text-destructive/60">· click to dismiss</span>
             </div>
           )}
-          <div className="flex gap-2 flex-wrap justify-end">
-            <span className="text-xs text-muted-foreground self-center">Exports all actions</span>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                const path = await saveDialog({
-                  title: "Export action patterns",
-                  defaultPath: "action-patterns.json",
-                  filters: [{ name: "JSON", extensions: ["json"] }],
-                });
-                if (!path) return;
-                setIsExporting(true);
-                try {
-                  await exportActionPatterns(path as string);
-                  toast.success("Action patterns exported", {
-                    description: "JSON file saved successfully.",
-                  });
-                } catch (e) {
-                  toastError("Failed to export patterns", e);
-                } finally {
-                  setIsExporting(false);
-                }
-              }}
-              disabled={isExporting}
-            >
-              <IconDownload className="size-4 mr-2" />
-              Export
-            </Button>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                const path = await openDialog({
-                  title: "Import action patterns",
-                  multiple: false,
-                  filters: [{ name: "JSON", extensions: ["json"] }],
-                });
-                if (!path) return;
-                setIsImporting(true);
-                try {
-                  const result = await importActionPatterns(path as string);
-                  toast.success("Action patterns imported", {
-                    description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.`,
-                  });
-                  if (result.skipped_items?.length) {
-                    toast.warning("Some patterns were skipped", {
-                      description: result.skipped_items.join("; "),
-                    });
-                  }
-                  queryClient.invalidateQueries({ queryKey: ["action-patterns"] });
-                  await reloadAllPatterns();
-                } catch (e) {
-                  toastError("Failed to import patterns", e);
-                } finally {
-                  setIsImporting(false);
-                }
-              }}
-              disabled={isImporting}
-            >
-              <IconUpload className="size-4 mr-2" />
-              Import
-            </Button>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                setIsReloading(true);
-                try {
-                  await reloadAllPatterns();
-                  toast.success("Patterns reloaded", {
-                    description: "Running workers will now use the updated patterns.",
-                  });
-                } catch (e) {
-                  toastError("Failed to reload patterns", e);
-                } finally {
-                  setIsReloading(false);
-                }
-              }}
-              disabled={isReloading}
-            >
-              <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
-              Reload
-            </Button>
-            <Button onClick={() => { resetActionForm(); setAddActionOpen(true); }}>
-              <IconPlus className="size-4 mr-1" />
-              Add Action
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm"><IconDotsVertical className="size-4" /></Button>} />
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={async () => {
+                  const path = await saveDialog({ title: "Export action patterns", defaultPath: "action-patterns.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+                  if (!path) return;
+                  setIsExporting(true);
+                  try { await exportActionPatterns(path as string); toast.success("Action patterns exported"); }
+                  catch (e) { toastError("Failed to export patterns", e); }
+                  finally { setIsExporting(false); }
+                }}
+                disabled={isExporting}
+              >
+                <IconDownload className="size-4 mr-2" />
+                Export Patterns
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={async () => {
+                  const path = await openDialog({ title: "Import action patterns", multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+                  if (!path) return;
+                  setIsImporting(true);
+                  try {
+                    const result = await importActionPatterns(path as string);
+                    toast.success("Action patterns imported", { description: `Imported ${result.imported}, Updated ${result.updated}, Skipped ${result.skipped}.` });
+                    if (result.skipped_items?.length) toast.warning("Some patterns were skipped", { description: result.skipped_items.join("; ") });
+                    queryClient.invalidateQueries({ queryKey: ["action-patterns"] });
+                    await reloadAllPatterns();
+                  } catch (e) { toastError("Failed to import patterns", e); }
+                  finally { setIsImporting(false); }
+                }}
+                disabled={isImporting}
+              >
+                <IconUpload className="size-4 mr-2" />
+                Import Patterns
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={async () => {
+                  setIsReloading(true);
+                  try { await reloadAllPatterns(); toast.success("Patterns reloaded", { description: "Running workers will use updated patterns." }); }
+                  catch (e) { toastError("Failed to reload patterns", e); }
+                  finally { setIsReloading(false); }
+                }}
+                disabled={isReloading}
+              >
+                <IconRefresh className={`size-4 mr-2 ${isReloading ? "animate-spin" : ""}`} />
+                Reload Workers
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" onClick={() => { resetActionForm(); setAddActionOpen(true); }}>
+            <IconPlus className="size-4 mr-1" />
+            Add Action
+          </Button>
         </div>
       </PageHeader>
 
@@ -497,17 +472,19 @@ export default function ActionsPage() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      {expandedActionId === action.id ? (
-                        <IconChevronDown className="size-4 text-muted-foreground" />
-                      ) : (
-                        <IconChevronRight className="size-4 text-muted-foreground" />
-                      )}
+                      <div className={`p-1.5 rounded-md transition-colors ${expandedActionId === action.id ? "bg-primary/10" : "bg-muted/50"}`}>
+                        {expandedActionId === action.id ? (
+                          <IconChevronDown className="size-4 text-primary" />
+                        ) : (
+                          <IconChevronRight className="size-4 text-muted-foreground" />
+                        )}
+                      </div>
                       <div>
                         <CardTitle className="text-base">
                           {action.name}
                         </CardTitle>
-                        <p className="text-sm text-muted-foreground font-mono">
-                          {action.name}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {getButtonTypeLabel(action.button_type)}{action.is_two_step ? " · Two-step" : ""}
                         </p>
                       </div>
                     </div>
@@ -533,6 +510,7 @@ export default function ActionsPage() {
                           e.stopPropagation();
                           openDefaultsDialog(action);
                         }}
+                        className="text-muted-foreground hover:text-sky-500 hover:bg-sky-500/10"
                       >
                         <IconSettings className="size-4" />
                       </Button>
@@ -545,6 +523,7 @@ export default function ActionsPage() {
                           e.stopPropagation();
                           openEditAction(action);
                         }}
+                        className="text-muted-foreground hover:text-foreground hover:bg-muted"
                       >
                         <IconPencil className="size-4" />
                       </Button>
@@ -558,6 +537,7 @@ export default function ActionsPage() {
                           setActionToDelete(action);
                           setDeleteActionOpen(true);
                         }}
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       >
                         <IconTrash className="size-4" />
                       </Button>
@@ -566,6 +546,13 @@ export default function ActionsPage() {
                 </CardHeader>
 
                 {expandedActionId === action.id && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ overflow: "hidden" }}
+                  >
                   <CardContent>
                     <div className="border-t pt-4 space-y-6">
                       {action.is_two_step ? (
@@ -586,6 +573,7 @@ export default function ActionsPage() {
                       )}
                     </div>
                   </CardContent>
+                  </motion.div>
                 )}
               </Card>
             ))}
@@ -628,7 +616,7 @@ export default function ActionsPage() {
           onUpdateEditPatternPriority={setEditPatternPriority}
           onCreateAction={handleAddAction}
           onUpdateAction={handleEditAction}
-          onDeleteAction={(actionId) => actionToDelete && handleDeleteAction(actionToDelete)}
+          onDeleteAction={() => handleDeleteAction()}
           onCreatePattern={handleAddPattern}
           onUpdatePattern={handleEditPattern}
         />
@@ -645,7 +633,6 @@ export default function ActionsPage() {
           defaultDelayMax={defaultDelayMax}
           newTargetInput={newTargetInput}
           onUpdateFixedText={setDefaultFixedText}
-          onUpdateTargets={setDefaultTargets}
           onUpdateRandomFallback={setDefaultRandomFallback}
           onUpdateDelayMin={setDefaultDelayMin}
           onUpdateDelayMax={setDefaultDelayMax}

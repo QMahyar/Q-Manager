@@ -40,15 +40,12 @@ export async function withRetry<T>(
   options?: RetryOptions
 ): Promise<T> {
   const opts = { ...defaultOptions, ...options };
-  let lastError: unknown;
   let delay = opts.initialDelay;
 
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (error) {
-      lastError = error;
-
       // Check if we should retry
       if (attempt >= opts.maxAttempts || !opts.isRetryable(error)) {
         throw error;
@@ -66,7 +63,8 @@ export async function withRetry<T>(
     }
   }
 
-  throw lastError;
+  // This line is unreachable (loop always returns or throws), but satisfies TypeScript
+  throw new Error("withRetry: exhausted attempts");
 }
 
 /**
