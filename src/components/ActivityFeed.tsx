@@ -14,7 +14,10 @@ import {
 } from "@tabler/icons-react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type { Event } from "@tauri-apps/api/event";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
+import { queryKeys } from "@/lib/query-keys";
+import type { Account } from "@/lib/types";
 
 export interface ActivityItem {
   id: string;
@@ -64,6 +67,7 @@ export function ActivityFeed({
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [logLevelFilter, setLogLevelFilter] = useState<"all" | "error" | "warn" | "info">("warn");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const addActivity = (item: Omit<ActivityItem, "id" | "timestamp">) => {
     setActivities((prev) => {
@@ -88,18 +92,24 @@ export function ActivityFeed({
     };
 
     const setupListeners = async () => {
+      // NOTE: the backend AccountStatusEvent only carries { account_id, status,
+      // message } — no account_name. Resolve the display name from the accounts
+      // query cache instead of reading a field that is never emitted.
       await addListener<{
-        account_id: number; account_name: string; status: string; message?: string | null;
+        account_id: number; status: string; message?: string | null;
       }>("account-status", (event) => {
-        const { account_id, account_name, status, message } = event.payload;
+        const { account_id, status, message } = event.payload;
         if (status === "starting" || status === "stopping") return;
+        const accounts = queryClient.getQueryData<Account[]>(queryKeys.accounts());
+        const accountName =
+          accounts?.find((a) => a.id === account_id)?.account_name ?? `Account ${account_id}`;
         const statusMap: Record<string, string> = {
           running: "Started", stopped: "Stopped", error: "Error", reconnecting: "Reconnecting",
         };
         addActivity({
           type: status === "error" ? "error" : "status",
-          accountId: account_id, accountName: account_name,
-          title: `${account_name || `Account ${account_id}`} ${statusMap[status] || status}`,
+          accountId: account_id, accountName,
+          title: `${accountName} ${statusMap[status] || status}`,
           description: message || undefined,
         });
       });
@@ -115,24 +125,28 @@ export function ActivityFeed({
       });
 
       await addListener<{
-        account_id: number; account_name: string; action_name: string; target?: string;
+        account_id: number; account_name: string; action_name: string; button_clicked?: string | null;
       }>("action-detected", (event) => {
-        const { account_id, account_name, action_name, target } = event.payload;
+        const { account_id, account_name, action_name, button_clicked } = event.payload;
         addActivity({
           type: "action", accountId: account_id, accountName: account_name,
           title: `Action: ${action_name}`,
-          description: target ? `Target: ${target}` : `Executed for ${account_name}`,
+          description: button_clicked ? `Clicked: ${button_clicked}` : `Executed for ${account_name}`,
         });
       });
 
+      // JoinAttemptEvent carries { attempt, max_attempts, success } — there is no
+      // `message` field, so build the description from the attempt counters.
       await addListener<{
-        account_id: number; account_name: string; attempt: number; success: boolean; message?: string;
+        account_id: number; account_name: string; attempt: number; max_attempts: number; success: boolean;
       }>("join-attempt", (event) => {
-        const { account_id, account_name, attempt, success, message } = event.payload;
+        const { account_id, account_name, attempt, max_attempts, success } = event.payload;
         addActivity({
           type: "join", accountId: account_id, accountName: account_name,
           title: `Join Attempt #${attempt}`,
-          description: success ? "Joined successfully" : message || "Attempting to join...",
+          description: success
+            ? "Joined successfully"
+            : `Attempting to join… (${attempt}/${max_attempts})`,
         });
       });
 
@@ -162,7 +176,7 @@ export function ActivityFeed({
       console.error("[ActivityFeed] Failed to set up event listeners:", err);
     });
     return () => { cancelled = true; unlisteners.forEach((u) => u()); };
-  }, [maxItems]);
+  }, [maxItems, queryClient]);
 
   const clearActivities = () => setActivities([]);
 

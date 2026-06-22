@@ -4,9 +4,10 @@
 //! Provides spawn/stop/query capabilities for account automation tasks.
 
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
@@ -18,6 +19,11 @@ use crate::workers::AccountWorker;
 
 /// Global worker manager instance
 pub static WORKER_MANAGER: Lazy<WorkerManager> = Lazy::new(WorkerManager::new);
+
+/// Monotonic counter used to stamp each spawned worker with a unique instance id.
+/// Lets an exiting worker tell whether the handle currently in the map is still
+/// its own (vs. a newer worker that replaced it) before touching it.
+static WORKER_INSTANCE_SEQ: AtomicU64 = AtomicU64::new(1);
 
 /// Commands that can be sent to a running worker
 #[derive(Debug, Clone)]
@@ -31,8 +37,25 @@ pub enum WorkerCommand {
 pub struct WorkerHandle {
     pub account_id: i64,
     pub account_name: String,
+    instance_id: u64,
     command_tx: mpsc::Sender<WorkerCommand>,
     task_handle: tokio::task::JoinHandle<()>,
+}
+
+/// RAII guard that releases a start reservation (see `WorkerManager::starting`)
+/// on every exit path of `start_account`, including early error returns.
+struct StartReservation {
+    starting: Arc<StdMutex<HashSet<i64>>>,
+    account_id: i64,
+}
+
+impl Drop for StartReservation {
+    fn drop(&mut self) {
+        self.starting
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&self.account_id);
+    }
 }
 
 #[allow(dead_code)]
@@ -57,13 +80,22 @@ impl WorkerHandle {
 pub struct WorkerManager {
     workers: Arc<RwLock<HashMap<i64, WorkerHandle>>>,
     worker_runtime: Arc<Runtime>,
+    /// Account IDs whose start sequence is currently in flight (between the
+    /// "is it running?" check and the handle insert). Guards against a TOCTOU
+    /// double-spawn when two starts race (double-click, tray + UI, start-all
+    /// racing a manual start).
+    starting: Arc<StdMutex<HashSet<i64>>>,
 }
 
 impl WorkerManager {
     /// Create a new worker manager
     pub fn new() -> Self {
+        // Blocking Telethon I/O is offloaded to the runtime's blocking pool via
+        // TelethonClient::request_async/shutdown_async, so these worker threads
+        // are reserved for async coordination. A small pool still provides
+        // headroom for the short synchronous DB calls workers make inline.
         let worker_runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(4)
             .enable_all()
             .build()
             .unwrap_or_else(|e| {
@@ -74,6 +106,7 @@ impl WorkerManager {
         WorkerManager {
             workers: Arc::new(RwLock::new(HashMap::new())),
             worker_runtime: Arc::new(worker_runtime),
+            starting: Arc::new(StdMutex::new(HashSet::new())),
         }
     }
 
@@ -103,6 +136,21 @@ impl WorkerManager {
                 }
             }
         }
+
+        // Atomically reserve this account's start slot. If another start is
+        // already in flight (it passed the check above but hasn't inserted its
+        // handle yet), bail out instead of spawning a duplicate worker. The
+        // reservation is released on every return path by `_start_reservation`.
+        {
+            let mut starting = self.starting.lock().unwrap_or_else(|p| p.into_inner());
+            if !starting.insert(account_id) {
+                return Err(format!("Account {} is already starting", account_id));
+            }
+        }
+        let _start_reservation = StartReservation {
+            starting: self.starting.clone(),
+            account_id,
+        };
 
         // Get account and settings from DB
         let (account, settings, group_slots) = {
@@ -235,6 +283,10 @@ impl WorkerManager {
         let (command_tx, command_rx) = mpsc::channel::<WorkerCommand>(8);
         let account_name = account.account_name.clone();
 
+        // Stamp this worker with a unique instance id so its exit cleanup can
+        // tell whether the handle in the map is still its own.
+        let instance_id = WORKER_INSTANCE_SEQ.fetch_add(1, Ordering::Relaxed);
+
         // Spawn worker task on the dedicated worker runtime.
         // Using spawn directly avoids the convoluted tokio::spawn → spawn_blocking → block_on
         // nesting that was previously required.
@@ -288,15 +340,27 @@ impl WorkerManager {
             // cannot race between "not in map" and DB still showing "running".
             {
                 let mut workers_guard = workers.write().await;
-                let (status, message): (&str, Option<String>) = match &final_error {
-                    Some(e) => (WorkerState::Error(String::new()).as_str(), Some(e.clone())),
-                    None => (WorkerState::Stopped.as_str(), None),
-                };
-                if let Ok(conn) = db::get_conn() {
-                    let _ = db::update_account_status(&conn, account_id, status);
+                // Only act if the handle in the map is still ours (or none has
+                // been inserted yet — the fast-fail path). If a newer worker
+                // instance replaced us, leave its handle and status untouched so
+                // we never orphan it or clobber its "running" state.
+                let current_instance = workers_guard.get(&account_id).map(|h| h.instance_id);
+                if current_instance == Some(instance_id) || current_instance.is_none() {
+                    let (status, message): (&str, Option<String>) = match &final_error {
+                        Some(e) => (WorkerState::Error(String::new()).as_str(), Some(e.clone())),
+                        None => (WorkerState::Stopped.as_str(), None),
+                    };
+                    if let Ok(conn) = db::get_conn() {
+                        let _ = db::update_account_status(&conn, account_id, status);
+                    }
+                    workers_guard.remove(&account_id);
+                    emit_account_status(account_id, status, message);
+                } else {
+                    log::info!(
+                        "[{}] Worker instance superseded by a newer start; skipping cleanup",
+                        account_name_clone
+                    );
                 }
-                workers_guard.remove(&account_id);
-                emit_account_status(account_id, status, message);
             }
 
             log::info!("[{}] Worker task ended", account_name_clone);
@@ -310,12 +374,14 @@ impl WorkerManager {
                 WorkerHandle {
                     account_id,
                     account_name: account.account_name,
+                    instance_id,
                     command_tx,
                     task_handle,
                 },
             );
         }
 
+        // `_start_reservation` is released here, once the handle is in the map.
         Ok(())
     }
 
@@ -414,13 +480,27 @@ impl WorkerManager {
     }
 
     /// Check if an account is running — synchronous version for use in sync commands.
-    /// Uses `blocking_read` which is safe to call from a non-async context.
+    ///
+    /// Deliberately avoids `blocking_read()`/`block_on`, which **panic** when
+    /// called from within any Tokio runtime context. Tauri's execution context
+    /// for sync commands is not guaranteed to be runtime-free, and a panic here
+    /// would abort the calling command (e.g. `account_refresh_session`). Instead
+    /// we use a short, bounded `try_read` retry: the workers write-lock is only
+    /// ever held briefly (map insert/remove), so this resolves almost
+    /// immediately. If the lock stays contended we conservatively report
+    /// `true` so a session refresh never races an active worker.
     pub fn is_account_running(&self, account_id: i64) -> bool {
-        self.workers
-            .blocking_read()
-            .get(&account_id)
-            .map(|h| h.is_running())
-            .unwrap_or(false)
+        for _ in 0..50 {
+            if let Ok(workers) = self.workers.try_read() {
+                return workers
+                    .get(&account_id)
+                    .map(|h| h.is_running())
+                    .unwrap_or(false);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        // Could not obtain a consistent view in ~100ms — assume running to be safe.
+        true
     }
 
     /// Get list of running account IDs

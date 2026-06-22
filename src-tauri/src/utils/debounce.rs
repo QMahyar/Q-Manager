@@ -10,13 +10,21 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// Debouncer for last_seen_at updates (per account)
+/// Debouncer for last_seen_at updates (per account).
+///
+/// `Debouncer` is **leading-edge**: `should_execute` fires on the first call in a
+/// window and suppresses the rest. That is correct for throttling idempotent,
+/// monotonic updates like `last_seen_at`, where dropping intermediate ticks is
+/// harmless.
+///
+/// It must NOT be used for account *status* events. There the value that matters
+/// is the last one in a rapid burst (e.g. starting → running → stopped), and a
+/// leading-edge debouncer would emit "starting" and drop the terminal "stopped",
+/// leaving the UI/tray stuck on a stale status. Status updates are coalesced
+/// trailing-edge on the frontend instead (see `useAccountEvents`, which keeps the
+/// latest payload per account), so no status debouncer lives here.
 pub static LAST_SEEN_DEBOUNCER: Lazy<Debouncer<i64>> =
     Lazy::new(|| Debouncer::new(Duration::from_secs(30)));
-
-/// Debouncer for account status events
-pub static STATUS_EVENT_DEBOUNCER: Lazy<Debouncer<i64>> =
-    Lazy::new(|| Debouncer::new(Duration::from_millis(500)));
 
 /// Generic debouncer that tracks last execution time per key
 pub struct Debouncer<K: std::hash::Hash + Eq + Clone> {

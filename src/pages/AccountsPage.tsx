@@ -324,7 +324,21 @@ export default function AccountsPage() {
         );
       },
     },
-  ], [getStatusBadge, navigate, startMutation, stopMutation, refreshMutation, refreshingIds]);
+    // Depend on the specific stable functions / primitive flags the columns
+    // actually use — not the whole mutation objects, which are recreated every
+    // render and would make this memo never hold (re-deriving all columns on each
+    // render). `mutate` is referentially stable in react-query; `isPending` is a
+    // primitive. handleStartAccount/openExportDialog are intentionally omitted:
+    // they only close over stable setters, so a captured closure stays correct.
+  ], [
+    getStatusBadge,
+    navigate,
+    startMutation.isPending,
+    stopMutation.isPending,
+    stopMutation.mutate,
+    refreshMutation.mutate,
+    refreshingIds,
+  ]);
 
   // TanStack Table instance
   const table = useReactTable({
@@ -398,6 +412,9 @@ export default function AccountsPage() {
           toast.success("Account deleted", {
             description: `${accountToDelete.account_name} has been removed.`,
           });
+          // Clear selection so its (now-stale) row id can't be targeted by a
+          // later bulk action — getRowId keys persist after the row is gone.
+          table.resetRowSelection();
         },
         onSettled: () => {
           setDeleteDialogOpen(false);
@@ -668,6 +685,10 @@ export default function AccountsPage() {
   const handleExportSelected = async () => {
     if (selectedAccountIds.length === 0) return;
 
+    // Mark busy up front so the dialog button shows a spinner / disables and a
+    // second click can't kick off a duplicate export.
+    setExportingMultiple(true);
+
     const result = await saveDialog({
       title: `Export ${selectedAccountIds.length} sessions`,
       defaultPath: `accounts_sessions${exportFormat === "zip" ? ".zip" : ""}`,
@@ -690,6 +711,8 @@ export default function AccountsPage() {
       }
       setExportDialogOpen(false);
       setAccountToExport(null);
+      // Clear selection after a bulk export so stale ids aren't reused.
+      table.resetRowSelection();
     } catch (error) {
       toastError("Export failed", error);
     } finally {
@@ -807,6 +830,7 @@ export default function AccountsPage() {
           onStopAll={() => setStopAllDialogOpen(true)}
           onStartSelected={() => startSelectedMutation.mutate(selectedAccountIds, {
             onSuccess: (reports) => {
+              table.resetRowSelection();
               const failed = reports.filter((report) => !report.started);
               if (failed.length > 0) {
                 setBulkStartReports(reports);
@@ -814,7 +838,9 @@ export default function AccountsPage() {
               }
             },
           })}
-          onStopSelected={() => stopSelectedMutation.mutate(selectedAccountIds)}
+          onStopSelected={() => stopSelectedMutation.mutate(selectedAccountIds, {
+            onSuccess: () => table.resetRowSelection(),
+          })}
           onExportSelected={() => {
             setAccountToExport(null);
             setExportDialogOpen(true);

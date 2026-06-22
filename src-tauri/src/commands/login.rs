@@ -294,8 +294,32 @@ pub async fn login_complete(
 
     session.shutdown();
 
-    // Move session folder to permanent location
     let temp_dir = get_sessions_dir().join(&token);
+
+    // Dedupe by Telegram user_id. Re-logging-in an account we already have must
+    // not silently `remove_dir_all` its (possibly in-use) session directory and
+    // create a duplicate DB row keyed to the same user. If an account already
+    // owns this user_id, discard the freshly-created temp session and point the
+    // user at the existing account instead.
+    {
+        let conn = db::get_conn().map_err(error_response)?;
+        let existing = db::list_accounts(&conn)
+            .map_err(error_response)?
+            .into_iter()
+            .find(|a| a.user_id == Some(user_id));
+        if let Some(existing) = existing {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err(error_response(format!(
+                "This Telegram account is already added as \"{}\". \
+                 Delete that account first, or use it directly.",
+                existing.account_name
+            )));
+        }
+    }
+
+    // Move session folder to permanent location. Any `account_{user_id}` directory
+    // still present here is therefore an orphan (no DB row references it), so it is
+    // safe to replace.
     let perm_dir = get_sessions_dir().join(format!("account_{}", user_id));
 
     if perm_dir.exists() {

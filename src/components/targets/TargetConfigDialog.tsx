@@ -53,6 +53,15 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
   const [saving, setSaving] = useState(false);
   const [delayError, setDelayError] = useState<string | undefined>();
 
+  // Parse a delay input to an int within [0, 300]. `parseInt(...) || 0` silently
+  // turned malformed input into 0 *and* let out-of-range values through; this
+  // guards NaN and clamps so validateDelay always sees a sane number.
+  const parseDelay = (raw: string) => {
+    const parsed = parseInt(raw, 10);
+    if (Number.isNaN(parsed)) return 0;
+    return Math.min(300, Math.max(0, parsed));
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -294,7 +303,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
                         max={300}
                         value={minDelay}
                         onChange={(e) => {
-                          const newMin = parseInt(e.target.value) || 0;
+                          const newMin = parseDelay(e.target.value);
                           setMinDelay(newMin);
                           const result = validateDelay(newMin, maxDelay);
                           setDelayError(result.error);
@@ -311,7 +320,7 @@ export function TargetConfigDialog({ open, onOpenChange, accountId, action, acco
                         max={300}
                         value={maxDelay}
                         onChange={(e) => {
-                          const newMax = parseInt(e.target.value) || 0;
+                          const newMax = parseDelay(e.target.value);
                           setMaxDelay(newMax);
                           const result = validateDelay(minDelay, newMax);
                           setDelayError(result.error);

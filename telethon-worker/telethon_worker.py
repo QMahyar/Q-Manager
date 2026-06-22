@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import contextlib
 import json
 import sys
 import traceback
@@ -18,6 +19,9 @@ class WorkerState:
     authorized: bool = False
     user: Optional[Dict[str, Any]] = None
     should_exit: bool = False
+    # Guards lazy client creation so concurrently-dispatched commands don't each
+    # build their own TelegramClient. Initialized in main() (needs a running loop).
+    client_lock: Optional[asyncio.Lock] = None
 
 
 async def write_response(payload: Dict[str, Any]) -> None:
@@ -43,6 +47,34 @@ async def event_writer(queue: asyncio.Queue) -> None:
     while True:
         event = await queue.get()
         await write_response({"event": event})
+
+
+def _build_message_payload(event_type: str, message) -> Dict[str, Any]:
+    """Build an outgoing message event payload, tolerating a buttons failure.
+
+    `message.buttons` is a lazy Telethon property that can raise (it may need to
+    resolve the bot entity / hit the network). If it does, we still emit the
+    message with an empty button list rather than letting the exception bubble
+    up — Telethon would otherwise swallow it and drop the entire event.
+    """
+    try:
+        buttons = _serialize_buttons(message)
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.write("[telethon-worker] Failed to serialize buttons; emitting with none.\n")
+        sys.stderr.flush()
+        buttons = []
+    return {
+        "type": event_type,
+        "message": {
+            "id": message.id,
+            "chat_id": message.chat_id,
+            "sender_id": message.sender_id or 0,
+            "text": message.raw_text or "",
+            "is_outgoing": bool(message.out),
+            "buttons": buttons,
+        },
+    }
 
 
 def _serialize_buttons(message) -> List[List[Dict[str, Any]]]:
@@ -102,56 +134,55 @@ def auth_state(state: WorkerState) -> Dict[str, Any]:
 async def ensure_client(state: WorkerState, event_queue: asyncio.Queue) -> TelegramClient:
     if state.client:
         return state.client
-    client = TelegramClient(state.session_path, state.api_id, state.api_hash)
-    await client.connect()
-    
-    # Start client to ensure proper initialization
-    if await client.is_user_authorized():
-        await client.start()
 
-    @client.on(events.NewMessage)
-    async def on_new_message(event):
-        message = event.message
-        payload = {
-            "type": "message",
-            "message": {
-                "id": message.id,
-                "chat_id": message.chat_id,
-                "sender_id": message.sender_id or 0,
-                "text": message.raw_text or "",
-                "is_outgoing": bool(message.out),
-                "buttons": _serialize_buttons(message),
-            },
-        }
-        await enqueue_event(event_queue, payload)
+    # Double-checked locking: commands are now dispatched concurrently, so guard
+    # client creation to avoid building two TelegramClients for one worker.
+    lock = state.client_lock
+    if lock is not None:
+        await lock.acquire()
+    try:
+        if state.client:
+            return state.client
 
-    @client.on(events.MessageEdited)
-    async def on_message_edited(event):
-        message = event.message
-        payload = {
-            "type": "message_edited",
-            "message": {
-                "id": message.id,
-                "chat_id": message.chat_id,
-                "sender_id": message.sender_id or 0,
-                "text": message.raw_text or "",
-                "is_outgoing": bool(message.out),
-                "buttons": _serialize_buttons(message),
-            },
-        }
-        await enqueue_event(event_queue, payload)
+        client = TelegramClient(state.session_path, state.api_id, state.api_hash)
+        await client.connect()
 
-    state.client = client
-    state.authorized = await client.is_user_authorized()
-    if state.authorized:
-        me = await client.get_me()
-        state.user = {
-            "id": me.id,
-            "first_name": me.first_name or "",
-            "last_name": me.last_name or "",
-            "phone": me.phone or "",
-        }
-    return client
+        # Start client to ensure proper initialization
+        if await client.is_user_authorized():
+            await client.start()
+
+        @client.on(events.NewMessage)
+        async def on_new_message(event):
+            try:
+                await enqueue_event(event_queue, _build_message_payload("message", event.message))
+            except Exception:
+                # Never let a handler exception propagate — Telethon would
+                # silently swallow it and we'd lose visibility into the failure.
+                traceback.print_exc(file=sys.stderr)
+
+        @client.on(events.MessageEdited)
+        async def on_message_edited(event):
+            try:
+                await enqueue_event(
+                    event_queue, _build_message_payload("message_edited", event.message)
+                )
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+
+        state.client = client
+        state.authorized = await client.is_user_authorized()
+        if state.authorized:
+            me = await client.get_me()
+            state.user = {
+                "id": me.id,
+                "first_name": me.first_name or "",
+                "last_name": me.last_name or "",
+                "phone": me.phone or "",
+            }
+        return client
+    finally:
+        if lock is not None:
+            lock.release()
 
 
 async def handle_command(state: WorkerState, request: Dict[str, Any], event_queue: asyncio.Queue) -> None:
@@ -275,8 +306,10 @@ async def handle_command(state: WorkerState, request: Dict[str, Any], event_queu
                 return
             
             try:
-                # Handle callback buttons (data present) vs text buttons
-                if data:
+                # Handle callback buttons (data present) vs text buttons.
+                # Use `is not None` so an empty-but-present data string is still
+                # treated as a callback rather than silently falling through.
+                if data is not None:
                     await client.send_callback(int(chat_id), int(message_id), bytes.fromhex(data))
                 elif text:
                     # Reply keyboard button - send text as message
@@ -326,13 +359,20 @@ async def main() -> None:
     session_path = sys.argv[3]
 
     state = WorkerState(api_id=api_id, api_hash=api_hash, session_path=session_path)
+    state.client_lock = asyncio.Lock()
 
     EVENT_QUEUE_SIZE = 200
     event_queue: asyncio.Queue = asyncio.Queue(maxsize=EVENT_QUEUE_SIZE)
     event_task = asyncio.create_task(event_writer(event_queue))
 
-    loop = asyncio.get_event_loop()
-    while True:
+    # Track in-flight command tasks. Commands are dispatched concurrently so a
+    # slow one (e.g. list_groups iterating every dialog) does not block reading
+    # and handling the next stdin line, which would otherwise let the Rust caller
+    # hit its request timeout while the worker is still busy.
+    pending: "set[asyncio.Task]" = set()
+
+    loop = asyncio.get_running_loop()
+    while not state.should_exit:
         line = await loop.run_in_executor(None, sys.stdin.readline)
         if not line:
             break
@@ -340,11 +380,24 @@ async def main() -> None:
             request = json.loads(line.strip())
         except json.JSONDecodeError:
             continue
-        await handle_command(state, request, event_queue)
-        if state.should_exit:
+
+        task = asyncio.create_task(handle_command(state, request, event_queue))
+        pending.add(task)
+        task.add_done_callback(pending.discard)
+
+        # Shutdown must take effect deterministically: let it run to completion
+        # (disconnect + ack) and then stop reading.
+        if request.get("command") == "shutdown":
+            await task
             break
 
+    # Let any still-running command tasks finish writing their responses.
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
     event_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await event_task
 
 
 if __name__ == "__main__":

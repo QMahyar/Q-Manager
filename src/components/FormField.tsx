@@ -183,6 +183,11 @@ export function NumberField({
   const [touched, setTouched] = useState(false);
 
   const validate = (val: number): string | null => {
+    // Guard NaN explicitly: every comparison against NaN is false, so without
+    // this an unparseable value would slip past the min/max checks below.
+    if (Number.isNaN(val)) {
+      return "Enter a valid number";
+    }
     if (min !== undefined && val < min) {
       return `Must be at least ${min}`;
     }
@@ -193,7 +198,10 @@ export function NumberField({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = Number(e.target.value);
+    // An empty or malformed input coerces to NaN; clamp it to a safe numeric
+    // value so NaN is never pushed into parent state, then validate that value.
+    const parsed = Number(e.target.value);
+    const newValue = Number.isNaN(parsed) ? (min ?? 0) : parsed;
     onChange(newValue);
     if (touched) {
       setError(validate(newValue));
@@ -260,6 +268,13 @@ export function DelayRangeField({
 }) {
   const [error, setError] = useState<string | null>(null);
 
+  // Parse a number input, mapping empty/malformed (NaN) input to 0 so an invalid
+  // value can't propagate to parent state or bypass the range check below.
+  const toNumber = (raw: string) => {
+    const n = Number(raw);
+    return Number.isNaN(n) ? 0 : n;
+  };
+
   useEffect(() => {
     if (minValue > maxValue) {
       setError("Min must be ≤ max");
@@ -284,7 +299,7 @@ export function DelayRangeField({
             type="number"
             min={0}
             value={minValue}
-            onChange={(e) => onMinChange(Number(e.target.value))}
+            onChange={(e) => onMinChange(toNumber(e.target.value))}
             disabled={disabled}
             className={cn(error && "border-destructive")}
           />
@@ -296,7 +311,7 @@ export function DelayRangeField({
             type="number"
             min={0}
             value={maxValue}
-            onChange={(e) => onMaxChange(Number(e.target.value))}
+            onChange={(e) => onMaxChange(toNumber(e.target.value))}
             disabled={disabled}
             className={cn(error && "border-destructive")}
           />

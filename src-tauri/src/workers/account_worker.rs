@@ -194,7 +194,9 @@ impl AccountWorker {
             .to_string();
         let session =
             TelethonClient::spawn(self.config.api_id, &self.config.api_hash, &session_path)?;
-        let response = session.request("start_updates", serde_json::json!({}))?;
+        let response = session
+            .request_async("start_updates", serde_json::json!({}))
+            .await?;
         if !response.ok {
             return Err(response
                 .error
@@ -207,7 +209,7 @@ impl AccountWorker {
         // Load detection patterns — clean up session on failure
         if let Err(e) = self.load_detection_patterns() {
             if let Some(s) = self.session.take() {
-                let _ = s.shutdown();
+                let _ = s.shutdown_async().await;
             }
             self.state = WorkerState::Stopped;
             return Err(e);
@@ -227,7 +229,7 @@ impl AccountWorker {
         log::info!("[{}] Stopping worker...", self.config.account_name);
 
         if let Some(session) = self.session.take() {
-            let _ = session.shutdown();
+            let _ = session.shutdown_async().await;
         }
 
         self.state = WorkerState::Stopped;
@@ -476,7 +478,27 @@ impl AccountWorker {
                             } else {
                                 idle_cycles = 0;
                                 for event in events {
-                                    self.handle_telethon_event(event).await?;
+                                    if let Err(e) = self.handle_telethon_event(event).await {
+                                        // A recoverable error (network blip, worker
+                                        // process died, timeout while clicking a
+                                        // button) must not permanently down the
+                                        // account — attempt to reconnect instead of
+                                        // propagating into the fatal error state.
+                                        if Self::is_recoverable_error(&e) {
+                                            log::warn!(
+                                                "[{}] Recoverable error handling event: {} — reconnecting",
+                                                self.config.account_name,
+                                                e
+                                            );
+                                            self.handle_connection_lost(&e).await?;
+                                            // The session was replaced; stop draining
+                                            // this stale event batch and resume polling.
+                                            break;
+                                        }
+                                        // Non-recoverable (auth revoked, banned, …):
+                                        // propagate so the worker exits in error state.
+                                        return Err(e);
+                                    }
                                 }
                             }
                         }
@@ -520,7 +542,10 @@ impl AccountWorker {
         match event.kind.as_str() {
             "message" => {
                 if let Some(message) = event.message {
-                    self.reconnect_attempts = 0;
+                    // NOTE: do not reset `reconnect_attempts` here. A connection
+                    // that flaps (reconnect → one message → die) would otherwise
+                    // never reach TELETHON_MAX_RECONNECT_ATTEMPTS. The counter is
+                    // reset only on a *successful* reconnect (see attempt_reconnect).
                     self.handle_telethon_message(message).await?;
                 }
             }
@@ -543,7 +568,8 @@ impl AccountWorker {
     fn is_recoverable_error(error: &str) -> bool {
         let error_lower = error.to_lowercase();
 
-        // Network-related errors are recoverable (temporary issues)
+        // Network-related errors and a dead/closed worker subprocess are
+        // recoverable (temporary issues that a reconnect can resolve).
         if error_lower.contains("network")
             || error_lower.contains("timeout")
             || error_lower.contains("connection")
@@ -554,6 +580,10 @@ impl AccountWorker {
             || error_lower.contains("flood")
             || error_lower.contains("unreachable")
             || error_lower.contains("unavailable")
+            || error_lower.contains("exited")
+            || error_lower.contains("closed")
+            || error_lower.contains("broken pipe")
+            || error_lower.contains("eof")
         {
             return true;
         }
@@ -1197,42 +1227,50 @@ impl AccountWorker {
             button.text
         );
 
-        if let Some(session) = &self.session {
-            match button.kind.as_str() {
-                "callback" => {
-                    if let Some(data) = &button.data {
-                        let response = session.request(
+        // Clone the (Arc-backed) client so the blocking request runs on the
+        // blocking pool without holding a borrow of `self` across the await.
+        let Some(session) = self.session.clone() else {
+            return Ok(());
+        };
+
+        match button.kind.as_str() {
+            "callback" => {
+                if let Some(data) = &button.data {
+                    let response = session
+                        .request_async(
                             "click_button",
                             serde_json::json!({
                                 "chat_id": chat_id,
                                 "message_id": message_id,
                                 "data": data,
                             }),
-                        )?;
-                        self.handle_telethon_response("click_button", &response)
-                            .await?;
-                    }
+                        )
+                        .await?;
+                    self.handle_telethon_response("click_button", &response)
+                        .await?;
                 }
-                "url" => {
-                    if let Some(url) = &button.url {
-                        if let Some(param) = parse_start_parameter(url) {
-                            if let Some(bot_id) = self.config.moderator_bot_ids.first() {
-                                let response = session.request(
+            }
+            "url" => {
+                if let Some(url) = &button.url {
+                    if let Some(param) = parse_start_parameter(url) {
+                        if let Some(bot_id) = self.config.moderator_bot_ids.first() {
+                            let response = session
+                                .request_async(
                                     "send_message",
                                     serde_json::json!({
                                         "chat_id": *bot_id,
                                         "text": format!("/start {}", param),
                                     }),
-                                )?;
-                                self.handle_telethon_response("send_message", &response)
-                                    .await?;
-                            }
+                                )
+                                .await?;
+                            self.handle_telethon_response("send_message", &response)
+                                .await?;
                         }
                     }
                 }
-                _ => {
-                    log::warn!("[{}] Unknown button type", self.config.account_name);
-                }
+            }
+            _ => {
+                log::warn!("[{}] Unknown button type", self.config.account_name);
             }
         }
 
@@ -1296,14 +1334,47 @@ impl AccountWorker {
         }
     }
 
-    /// Attempt to join a game
+    /// Attempt to join a game.
+    ///
+    /// The attempt budget (`join_attempts` + cooldown) is consumed only once we
+    /// have actually found a usable join button, a target bot, and a live
+    /// session — i.e. only when we are about to send a real `/start`. A
+    /// `join_time` message that lacks a usable button is a no-op and must not
+    /// burn an attempt, otherwise repeated button-less prompts would exhaust the
+    /// budget before a valid message ever arrives.
     async fn attempt_join(&mut self, message: &TelethonMessage) -> Result<(), String> {
+        // Get the correct moderator bot for this group
+        let bot_id = self
+            .get_moderator_for_group(message.chat_id)
+            .or_else(|| self.config.moderator_bot_ids.first().copied());
+
+        // Find the first join button (URL button carrying a `start` parameter)
+        let join_param = message
+            .buttons
+            .iter()
+            .flat_map(|row| row.iter())
+            .filter(|button| button.kind == "url")
+            .filter_map(|button| button.url.as_deref())
+            .find_map(parse_start_parameter);
+
+        let (Some(param), Some(bot), Some(session)) = (join_param, bot_id, self.session.clone())
+        else {
+            log::warn!(
+                "[{}] No usable join button found (skipping, attempt not consumed)",
+                self.config.account_name
+            );
+            return Ok(());
+        };
+
+        // Commit to a real attempt now that we have everything needed to send.
         self.join_attempts += 1;
         self.last_join_attempt = Some(std::time::Instant::now());
 
         log::info!(
-            "[{}] Attempting to join (attempt {}/{})",
+            "[{}] Sending /start {} to bot {} (attempt {}/{})",
             self.config.account_name,
+            param,
+            bot,
             self.join_attempts,
             self.config.max_join_attempts
         );
@@ -1316,44 +1387,17 @@ impl AccountWorker {
             false, // Will be updated when confirmation received
         );
 
-        // Get the correct moderator bot for this group
-        let bot_id = self
-            .get_moderator_for_group(message.chat_id)
-            .or_else(|| self.config.moderator_bot_ids.first().copied());
-
-        // Find the join button (URL button)
-        for row in &message.buttons {
-            for button in row {
-                if button.kind == "url" {
-                    if let Some(url) = &button.url {
-                        if let Some(param) = parse_start_parameter(url) {
-                            if let Some(bot) = bot_id {
-                                if let Some(session) = &self.session {
-                                    log::info!(
-                                        "[{}] Sending /start {} to bot {}",
-                                        self.config.account_name,
-                                        param,
-                                        bot
-                                    );
-                                    let response = session.request(
-                                        "send_message",
-                                        serde_json::json!({
-                                            "chat_id": bot,
-                                            "text": format!("/start {}", param),
-                                        }),
-                                    )?;
-                                    self.handle_telethon_response("send_message", &response)
-                                        .await?;
-                                    return Ok(());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        log::warn!("[{}] No join button found", self.config.account_name);
+        let response = session
+            .request_async(
+                "send_message",
+                serde_json::json!({
+                    "chat_id": bot,
+                    "text": format!("/start {}", param),
+                }),
+            )
+            .await?;
+        self.handle_telethon_response("send_message", &response)
+            .await?;
         Ok(())
     }
 
@@ -1398,7 +1442,7 @@ impl AccountWorker {
         self.last_reconnect_attempt = Some(std::time::Instant::now());
 
         if let Some(old_session) = self.session.take() {
-            let _ = old_session.shutdown();
+            let _ = old_session.shutdown_async().await;
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
 
@@ -1410,7 +1454,9 @@ impl AccountWorker {
             .to_string();
         match TelethonClient::spawn(self.config.api_id, &self.config.api_hash, &session_path) {
             Ok(session) => {
-                let response = session.request("start_updates", serde_json::json!({}))?;
+                let response = session
+                    .request_async("start_updates", serde_json::json!({}))
+                    .await?;
                 if !response.ok {
                     log::warn!(
                         "[{}] Telethon reconnect failed: {}",
@@ -1461,7 +1507,14 @@ impl AccountWorker {
         // Attempt reconnection with proper backoff
         loop {
             if self.state != WorkerState::Running {
-                return Err("Worker is stopping; aborting reconnection".to_string());
+                // A stop/shutdown raced the dropped connection. This is a normal
+                // teardown, not a failure — return Ok so the worker exits cleanly
+                // as "stopped" rather than being marked "error".
+                log::info!(
+                    "[{}] Reconnection aborted: worker is stopping",
+                    self.config.account_name
+                );
+                return Ok(());
             }
 
             match self.attempt_reconnect().await {

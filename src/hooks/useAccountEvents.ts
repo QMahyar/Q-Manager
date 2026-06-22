@@ -83,7 +83,11 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
   // Debounce refs for batching updates
   const statusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryInvalidateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Separate buffers for the two timers. They fire at different intervals, so a
+  // single shared map would be cleared by the faster (status) timer before the
+  // slower (cache) timer ever reads it — leaving the accounts cache un-updated.
   const pendingStatusUpdates = useRef<Map<number, AccountStatusEvent>>(new Map());
+  const pendingCacheUpdates = useRef<Map<number, AccountStatusEvent>>(new Map());
 
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
@@ -93,9 +97,12 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       const unlistenStatus = await listen<AccountStatusEvent>(
         IPC_EVENTS.accountStatus,
         (event) => {
-          // Store the latest status for each account
+          // Store the latest status for each account in BOTH buffers — one per
+          // timer, so the status timer clearing its buffer can't starve the
+          // cache timer.
           pendingStatusUpdates.current.set(event.payload.account_id, event.payload);
-          
+          pendingCacheUpdates.current.set(event.payload.account_id, event.payload);
+
           // Debounce the handler calls
           if (statusDebounceRef.current) {
             clearTimeout(statusDebounceRef.current);
@@ -112,16 +119,18 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
             });
             pendingStatusUpdates.current.clear();
           }, STATUS_DEBOUNCE_MS);
-          
+
           // Debounce query invalidation separately (can be slightly longer)
           if (queryInvalidateRef.current) {
             clearTimeout(queryInvalidateRef.current);
           }
           queryInvalidateRef.current = setTimeout(() => {
+            const updates = pendingCacheUpdates.current;
+            if (updates.size === 0) return;
             queryClient.setQueryData<Account[]>(queryKeys.accounts(), (current) => {
               if (!current) return current;
               return current.map((account) => {
-                const update = pendingStatusUpdates.current.get(account.id);
+                const update = updates.get(account.id);
                 if (!update) return account;
                 return {
                   ...account,
@@ -129,6 +138,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
                 };
               });
             });
+            updates.clear();
           }, QUERY_INVALIDATE_DEBOUNCE_MS);
         }
       );

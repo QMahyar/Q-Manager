@@ -55,6 +55,18 @@ fn get_accounts() -> Vec<TrayAccount> {
     accounts
 }
 
+/// Whether an account currently has a live or transitioning worker (and so
+/// belongs in the "Stop" submenu). Every other status — `stopped`, `error`, and
+/// any unexpected/unknown string — is treated as startable. The tray defines its
+/// two submenus as complements of this predicate so no account can ever fall
+/// through both filters and disappear from the menu entirely.
+fn is_stoppable_status(status: &str) -> bool {
+    matches!(
+        status,
+        "running" | "starting" | "stopping" | "reconnecting"
+    )
+}
+
 /// Create and setup the system tray (specific for Wry runtime, stores globally)
 pub fn setup_tray_wry(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::error::Error>> {
     // Build initial menu
@@ -123,16 +135,16 @@ pub fn build_tray_menu<R: Runtime>(
 ) -> Result<Menu<R>, Box<dyn std::error::Error>> {
     let accounts = get_accounts();
 
-    // Separate startable and stoppable accounts
-    // Startable: stopped or error → can be started
-    // Stoppable: running, starting, or stopping → can be stopped
-    let stopped_accounts: Vec<_> = accounts
-        .iter()
-        .filter(|a| a.status == "stopped" || a.status == "error")
-        .collect();
+    // Separate startable and stoppable accounts. The two sets are complements of
+    // `is_stoppable_status` so an account with an unexpected status (e.g.
+    // "reconnecting") still appears under "Start" rather than vanishing.
     let running_accounts: Vec<_> = accounts
         .iter()
-        .filter(|a| matches!(a.status.as_str(), "running" | "starting" | "stopping"))
+        .filter(|a| is_stoppable_status(&a.status))
+        .collect();
+    let stopped_accounts: Vec<_> = accounts
+        .iter()
+        .filter(|a| !is_stoppable_status(&a.status))
         .collect();
 
     // Create menu items
@@ -282,14 +294,15 @@ fn build_tray_menu_for_handle(
 ) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let accounts = get_accounts();
 
-    // Separate startable and stoppable accounts
-    let stopped_accounts: Vec<_> = accounts
-        .iter()
-        .filter(|a| a.status == "stopped" || a.status == "error")
-        .collect();
+    // Separate startable and stoppable accounts (complements of
+    // `is_stoppable_status`, so no status — known or unknown — is dropped).
     let running_accounts: Vec<_> = accounts
         .iter()
-        .filter(|a| matches!(a.status.as_str(), "running" | "starting" | "stopping"))
+        .filter(|a| is_stoppable_status(&a.status))
+        .collect();
+    let stopped_accounts: Vec<_> = accounts
+        .iter()
+        .filter(|a| !is_stoppable_status(&a.status))
         .collect();
 
     // Create menu items

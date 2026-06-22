@@ -169,7 +169,6 @@ pub struct TelegramGroup {
 #[command]
 pub async fn account_fetch_groups(account_id: i64) -> CommandResult<Vec<TelegramGroup>> {
     use crate::db;
-    use std::path::PathBuf;
 
     log::info!("Fetching groups for account {}", account_id);
 
@@ -194,11 +193,9 @@ pub async fn account_fetch_groups(account_id: i64) -> CommandResult<Vec<Telegram
         .or(settings.api_hash.clone())
         .ok_or_else(|| error_response("API Hash not configured"))?;
 
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    let sessions_dir = exe_dir.join("sessions");
+    // Use the shared sessions-dir resolver so this command can never diverge from
+    // where every other command (start_account, login_complete, …) looks.
+    let sessions_dir = crate::utils::fs::get_sessions_dir();
     let user_dir = account
         .user_id
         .map(|user_id| sessions_dir.join(format!("account_{}", user_id)));

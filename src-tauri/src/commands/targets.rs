@@ -3,6 +3,7 @@
 //! Manage target rules, blacklists, delays, and two-step pairs
 
 use rusqlite::params;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use tauri::command;
 
@@ -556,21 +557,29 @@ fn targets_copy_inner(
     action_ids: &[i64],
 ) -> CommandResult<()> {
     for action_id in action_ids {
-        // Get source override
+        // Get source override. Use `.optional()?` so a genuine read error
+        // propagates instead of collapsing into `None` — otherwise a transient
+        // glitch reading the source would be indistinguishable from "no
+        // override" and the else-branch below would DELETE the destination's
+        // existing config.
         let source_override: Option<String> = conn
             .query_row(
                 "SELECT rule_json FROM target_overrides WHERE account_id = ?1 AND action_id = ?2",
                 params![from_account_id, action_id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()
+            .map_err(error_response)?;
 
-        // Get source delay
-        let source_delay: Option<(i32, i32)> = conn.query_row(
-            "SELECT min_seconds, max_seconds FROM delay_overrides WHERE account_id = ?1 AND action_id = ?2",
-            params![from_account_id, action_id],
-            |row| Ok((row.get(0)?, row.get(1)?))
-        ).ok();
+        // Get source delay (same rationale: distinguish "no row" from a read error)
+        let source_delay: Option<(i32, i32)> = conn
+            .query_row(
+                "SELECT min_seconds, max_seconds FROM delay_overrides WHERE account_id = ?1 AND action_id = ?2",
+                params![from_account_id, action_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(error_response)?;
 
         // Get source blacklist
         let mut stmt = conn

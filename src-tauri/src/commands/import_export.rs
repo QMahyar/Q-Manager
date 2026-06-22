@@ -273,19 +273,23 @@ fn import_single_account(source_path: &str, account_name: &str) -> CommandResult
         });
     }
 
-    // Create account in database first
-    let conn = db::get_conn().map_err(error_response)?;
+    // Create the account row, copy the session, and initialize group slots as a
+    // single unit. The DB writes share one transaction so a failure at any step
+    // (including the group-slot inserts) rolls the account row back instead of
+    // leaving an orphaned account with no slots.
+    let mut conn = db::get_conn().map_err(error_response)?;
+    let tx = conn.transaction().map_err(error_response)?;
 
-    conn.execute(
+    tx.execute(
         "INSERT INTO accounts (account_name, status, created_at, updated_at) \
          VALUES (?1, 'stopped', datetime('now'), datetime('now'))",
         params![account_name],
     )
     .map_err(error_response)?;
 
-    let account_id = conn.last_insert_rowid();
+    let account_id = tx.last_insert_rowid();
 
-    // Create session directory
+    // Session directory (named by the new account id)
     let session_dir = get_account_session_dir(account_id);
     let copy_result: CommandResult<()> = (|| {
         fs::create_dir_all(&session_dir).map_err(error_response)?;
@@ -387,26 +391,36 @@ fn import_single_account(source_path: &str, account_name: &str) -> CommandResult
     })();
 
     if let Err(e) = copy_result {
+        // `tx` is dropped (without commit) on return → the account INSERT rolls
+        // back, so there is no orphaned row to delete manually.
         let _ = fs::remove_dir_all(&session_dir);
-        if let Ok(conn) = db::get_conn() {
-            let _ = conn.execute("DELETE FROM accounts WHERE id = ?1", params![account_id]);
-        }
         return Err(e);
     }
 
-    // Initialize group slots for the new account (slots 1 and 2 are the valid slot numbers)
-    conn.execute(
-        "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 1, 0, 'main')",
-        params![account_id],
-    )
-    .map_err(error_response)?;
-    conn.execute(
-        "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 2, 0, 'main')",
-        params![account_id],
-    )
-    .map_err(error_response)?;
+    // Initialize group slots for the new account (slots 1 and 2 are the valid slot
+    // numbers). A failure here rolls back the whole transaction (account row
+    // included) and removes the freshly-copied session directory.
+    let slots_result: CommandResult<()> = (|| {
+        tx.execute(
+            "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 1, 0, 'main')",
+            params![account_id],
+        )
+        .map_err(error_response)?;
+        tx.execute(
+            "INSERT INTO account_group_slots (account_id, slot, enabled, moderator_kind) VALUES (?1, 2, 0, 'main')",
+            params![account_id],
+        )
+        .map_err(error_response)?;
+        Ok(())
+    })();
+    if let Err(e) = slots_result {
+        let _ = fs::remove_dir_all(&session_dir);
+        return Err(e);
+    }
 
-    // Release database lock before Telethon validation
+    // Commit the account + slots atomically, then release the DB lock before the
+    // (slow) Telethon validation step.
+    tx.commit().map_err(error_response)?;
     drop(conn);
 
     // Validate the session with Telethon if available
@@ -492,22 +506,36 @@ fn validate_imported_session(
         .join("telethon.session")
         .to_string_lossy()
         .to_string();
-    let client = telethon::TelethonClient::spawn(api_id, &api_hash, &session_path)
-        .map_err(error_response)?;
-    let response = client
-        .request("state", serde_json::json!({}))
-        .map_err(|e| {
+
+    // A transient Telethon failure (spawn error, request timeout, worker error)
+    // must NOT be treated as fatal — the caller deletes the account + session on
+    // Err, which would destroy a perfectly good just-imported session over a
+    // momentary hiccup. Only a session that is *definitively* unauthorized is
+    // fatal; every transient failure falls through to Ok(None) ("skip
+    // validation"), leaving the imported session intact for a later refresh.
+    let client = match telethon::TelethonClient::spawn(api_id, &api_hash, &session_path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("Telethon spawn failed during validation, skipping: {}", e);
+            return Ok(None);
+        }
+    };
+    let response = match client.request("state", serde_json::json!({})) {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("Telethon request failed during validation, skipping: {}", e);
             let _ = client.shutdown();
-            error_response(e)
-        })?;
+            return Ok(None);
+        }
+    };
 
     if !response.ok {
+        log::warn!(
+            "Telethon returned an error during validation, skipping: {:?}",
+            response.error
+        );
         let _ = client.shutdown();
-        return Err(error_response(
-            response
-                .error
-                .unwrap_or_else(|| "Telethon worker error".to_string()),
-        ));
+        return Ok(None);
     }
 
     let payload = response.payload.unwrap_or(serde_json::json!({}));
