@@ -227,8 +227,13 @@ jobs:
             os: ubuntu-24.04-arm
           - name: windows-x86_64
             os: windows-latest
+          # Cross-compiled on the abundant Apple Silicon runner (scarce/retiring
+          # macos-13 Intel runners caused long queue times). The worker is built
+          # universal2 so it runs on x86_64 too.
           - name: macos-x86_64
-            os: macos-13
+            os: macos-latest
+            rust_target: x86_64-apple-darwin
+            worker_arch: universal2
           - name: macos-aarch64
             os: macos-latest
 
@@ -272,6 +277,8 @@ jobs:
 
       - name: Build Telethon worker (Linux / macOS)
         if: runner.os != 'Windows'
+        env:
+          PYINSTALLER_TARGET_ARCH: ${{ matrix.worker_arch }}
         run: |
           cd telethon-worker
           chmod +x build-telethon.sh
@@ -284,7 +291,19 @@ jobs:
         run: npm run build
 
       - name: Build server binary
-        run: cargo build --release --locked --no-default-features --features server --manifest-path src-tauri/Cargo.toml
+        shell: bash
+        run: |
+          target="${{ matrix.rust_target }}"
+          if [ -n "$target" ]; then
+            rustup target add "$target"
+            cargo build --release --locked --no-default-features --features server \
+              --manifest-path src-tauri/Cargo.toml --target "$target"
+            echo "SERVER_BIN=src-tauri/target/$target/release/q-manager" >> "$GITHUB_ENV"
+          else
+            cargo build --release --locked --no-default-features --features server \
+              --manifest-path src-tauri/Cargo.toml
+            echo "SERVER_BIN=src-tauri/target/release/q-manager" >> "$GITHUB_ENV"
+          fi
 
       - name: Package (Linux / macOS)
         if: runner.os != 'Windows'
@@ -293,7 +312,7 @@ jobs:
           version="${GITHUB_REF#refs/tags/v}"
           pkg="q-manager-${version}-server-${{ matrix.name }}"
           mkdir -p "$pkg"
-          cp src-tauri/target/release/q-manager "$pkg/q-manager"
+          cp "${SERVER_BIN:-src-tauri/target/release/q-manager}" "$pkg/q-manager"
           cp telethon-worker/dist/telethon-worker "$pkg/telethon-worker"
           chmod +x "$pkg/q-manager" "$pkg/telethon-worker"
           cat > "$pkg/README.txt" <<EOF

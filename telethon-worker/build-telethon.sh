@@ -47,10 +47,18 @@ if [ -z "$DIST_DIR" ]; then
   DIST_DIR="$SCRIPT_DIR/dist"
 fi
 
+# Optional cross-arch build (e.g. PYINSTALLER_TARGET_ARCH=universal2 on macOS to
+# produce a worker that also runs on x86_64 from an Apple Silicon runner).
+EXTRA_ARGS=()
+if [ -n "${PYINSTALLER_TARGET_ARCH:-}" ]; then
+  EXTRA_ARGS+=(--target-arch "$PYINSTALLER_TARGET_ARCH")
+fi
+
 python3 -m PyInstaller --clean --noconfirm --onefile \
   --name telethon-worker \
   --hidden-import python_socks \
   --hidden-import python_socks.async_.asyncio \
+  "${EXTRA_ARGS[@]}" \
   --distpath "$DIST_DIR" \
   "$WORKER_SCRIPT"
 
