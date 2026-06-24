@@ -9,8 +9,11 @@ pub mod errors;
 pub mod events;
 mod ipc;
 mod logging;
+#[cfg(feature = "server")]
+pub mod server;
 pub mod startup_checks;
 mod telethon;
+#[cfg(feature = "desktop")]
 mod tray;
 mod utils;
 pub mod validation;
@@ -20,8 +23,11 @@ pub mod import_utils;
 #[cfg(all(test, not(windows)))]
 mod validation_tests;
 
+#[allow(unused_imports)]
 use commands::*;
+#[cfg(feature = "desktop")]
 use std::time::Instant;
+#[cfg(feature = "desktop")]
 use tauri::Manager;
 
 /// Initialize logging
@@ -32,6 +38,48 @@ fn init_logging() {
     }
 }
 
+/// Run in headless web-server mode: serve the UI over HTTP and open it in a
+/// browser instead of a native window. Usage:
+///   q-manager serve [host] [port]      (defaults: 0.0.0.0 8787)
+///   q-manager serve --host 127.0.0.1 --port 9000
+#[cfg(feature = "server")]
+pub fn run_server(args: &[String]) {
+    init_logging();
+    log::info!("Starting Q Manager (web server mode)...");
+
+    let mut host = std::env::var("QM_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let mut port: u16 = std::env::var("QM_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8787);
+
+    // args = [exe, "serve", ...rest]
+    let rest = if args.len() > 2 { &args[2..] } else { &[] };
+    let mut i = 0;
+    while i < rest.len() {
+        match rest[i].as_str() {
+            "--host" => {
+                if let Some(v) = rest.get(i + 1) { host = v.clone(); i += 1; }
+            }
+            "--port" => {
+                if let Some(v) = rest.get(i + 1).and_then(|p| p.parse().ok()) { port = v; i += 1; }
+            }
+            token => {
+                // Positional: a bare number is a port, otherwise a host.
+                if let Ok(p) = token.parse::<u16>() { port = p; } else { host = token.to_string(); }
+            }
+        }
+        i += 1;
+    }
+
+    let runtime = tokio::runtime::Runtime::new().expect("failed to create Tokio runtime");
+    runtime.block_on(async move {
+        if let Err(e) = server::serve(&host, port).await {
+            log::error!("Web server failed: {e}");
+            eprintln!("\n=== FATAL ERROR ===\nQ Manager web server failed: {e}\n===================\n");
+            std::process::exit(1);
+        }
+    });
+}
+
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_logging();

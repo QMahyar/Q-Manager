@@ -7,15 +7,14 @@ use crate::validation::{
 };
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use tauri::command;
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn actions_list() -> CommandResult<Vec<Action>> {
     let conn = db::get_conn().map_err(error_response)?;
     db::list_actions(&conn).map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_create(payload: ActionCreate) -> CommandResult<Action> {
     // Validate inputs
     validate_action_name(&payload.name).map_err(error_response)?;
@@ -34,7 +33,7 @@ pub fn action_create(payload: ActionCreate) -> CommandResult<Action> {
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_delete(action_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
     db::delete_action(&conn, action_id).map_err(error_response)?;
@@ -51,7 +50,7 @@ pub struct ActionUpdate {
     pub is_two_step: bool,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_update(payload: ActionUpdate) -> CommandResult<Action> {
     // Validate inputs
     validate_action_name(&payload.name).map_err(error_response)?;
@@ -83,7 +82,7 @@ pub fn action_update(payload: ActionUpdate) -> CommandResult<Action> {
 }
 
 // Action Patterns
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_patterns_list(action_id: i64) -> CommandResult<Vec<ActionPattern>> {
     let conn = db::get_conn().map_err(error_response)?;
     db::list_action_patterns(&conn, action_id).map_err(error_response)
@@ -99,7 +98,7 @@ pub struct ActionPatternCreate {
     pub step: i32,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_pattern_create(payload: ActionPatternCreate) -> CommandResult<ActionPattern> {
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;
@@ -135,7 +134,7 @@ pub fn action_pattern_create(payload: ActionPatternCreate) -> CommandResult<Acti
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_pattern_delete(pattern_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
     conn.execute(
@@ -157,7 +156,7 @@ pub struct ActionPatternUpdate {
     pub step: i32,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_pattern_update(payload: ActionPatternUpdate) -> CommandResult<ActionPattern> {
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;

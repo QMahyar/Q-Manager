@@ -270,6 +270,14 @@ impl WorkerManager {
             join_cooldown_seconds: account
                 .join_cooldown_seconds_override
                 .unwrap_or(settings.join_cooldown_seconds_default),
+            // Device identity comes from global settings; proxy is per-account.
+            connection: crate::telethon::ConnectionConfig::from_parts(
+                settings.device_model.clone(),
+                settings.system_version.clone(),
+                settings.app_version.clone(),
+                settings.lang_code.clone(),
+                account.proxy_url.clone(),
+            ),
         };
 
         // Update status to starting

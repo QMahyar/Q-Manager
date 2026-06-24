@@ -1,5 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { validate, rules } from './validation';
+import { validate, rules, validateProxyUrl } from './validation';
+
+describe('validateProxyUrl', () => {
+  it('treats empty as valid (direct connection)', () => {
+    expect(validateProxyUrl('').valid).toBe(true);
+    expect(validateProxyUrl('   ').valid).toBe(true);
+  });
+  it('accepts socks5/socks4/http with host:port', () => {
+    expect(validateProxyUrl('socks5://1.2.3.4:1080').valid).toBe(true);
+    expect(validateProxyUrl('socks5://user:pass@host.example:1080').valid).toBe(true);
+    expect(validateProxyUrl('socks4://10.0.0.1:9050').valid).toBe(true);
+    expect(validateProxyUrl('http://proxy.local:8080').valid).toBe(true);
+  });
+  it('accepts mtproto and tg:// links with a secret', () => {
+    expect(validateProxyUrl('mtproto://1.2.3.4:443?secret=dd00112233').valid).toBe(true);
+    expect(validateProxyUrl('tg://proxy?server=1.2.3.4&port=443&secret=ee00ff').valid).toBe(true);
+  });
+  it('rejects mtproto without a secret', () => {
+    expect(validateProxyUrl('mtproto://1.2.3.4:443').valid).toBe(false);
+  });
+  it('rejects unknown schemes and bad ports', () => {
+    expect(validateProxyUrl('ftp://host:21').valid).toBe(false);
+    expect(validateProxyUrl('socks5://host').valid).toBe(false);
+    expect(validateProxyUrl('socks5://host:99999').valid).toBe(false);
+  });
+});
 
 describe('validation', () => {
   describe('validate function', () => {

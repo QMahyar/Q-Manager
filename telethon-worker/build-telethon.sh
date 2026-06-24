@@ -39,7 +39,8 @@ if [ "$CLEAN" = true ]; then
 fi
 
 python3 -m pip install --upgrade pip --break-system-packages >/dev/null 2>&1 || true
-python3 -m pip install telethon pyinstaller cryptg --break-system-packages >/dev/null 2>&1 || python3 -m pip install --user telethon pyinstaller cryptg >/dev/null
+# python-socks is required for SOCKS5/SOCKS4/HTTP proxy support.
+python3 -m pip install telethon pyinstaller cryptg python-socks --break-system-packages >/dev/null 2>&1 || python3 -m pip install --user telethon pyinstaller cryptg python-socks >/dev/null
 
 DIST_DIR="$OUTPUT_DIR"
 if [ -z "$DIST_DIR" ]; then
@@ -48,6 +49,8 @@ fi
 
 python3 -m PyInstaller --clean --noconfirm --onefile \
   --name telethon-worker \
+  --hidden-import python_socks \
+  --hidden-import python_socks.async_.asyncio \
   --distpath "$DIST_DIR" \
   "$WORKER_SCRIPT"
 

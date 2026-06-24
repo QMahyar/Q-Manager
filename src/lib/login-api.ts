@@ -1,5 +1,5 @@
 // Login wizard API functions
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/transport";
 import { IPC_COMMANDS } from "./ipc";
 import { getBackendError, getErrorMessage } from "./error-utils";
 

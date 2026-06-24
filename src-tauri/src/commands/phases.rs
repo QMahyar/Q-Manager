@@ -5,7 +5,6 @@ use crate::db::{self, Phase, PhasePattern, PhasePatternCreate};
 use crate::validation::{validate_pattern, validate_priority};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use tauri::command;
 
 /// Phase pattern update payload
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,19 +16,19 @@ pub struct PhasePatternUpdate {
     pub priority: i32,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phases_list() -> CommandResult<Vec<Phase>> {
     let conn = db::get_conn().map_err(error_response)?;
     db::list_phases(&conn).map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phase_patterns_list(phase_id: i64) -> CommandResult<Vec<PhasePattern>> {
     let conn = db::get_conn().map_err(error_response)?;
     db::list_phase_patterns(&conn, phase_id).map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phase_pattern_create(payload: PhasePatternCreate) -> CommandResult<PhasePattern> {
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;
@@ -49,7 +48,7 @@ pub fn phase_pattern_create(payload: PhasePatternCreate) -> CommandResult<PhaseP
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phase_pattern_delete(pattern_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
     db::delete_phase_pattern(&conn, pattern_id).map_err(error_response)?;
@@ -57,7 +56,7 @@ pub fn phase_pattern_delete(pattern_id: i64) -> CommandResult<()> {
     Ok(())
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phase_update_priority(phase_id: i64, priority: i32) -> CommandResult<Phase> {
     validate_priority(priority).map_err(error_response)?;
 
@@ -73,7 +72,7 @@ pub fn phase_update_priority(phase_id: i64, priority: i32) -> CommandResult<Phas
         .ok_or_else(|| error_response("Phase not found"))
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phase_pattern_update(payload: PhasePatternUpdate) -> CommandResult<PhasePattern> {
     // Validate inputs
     validate_pattern(&payload.pattern, payload.is_regex).map_err(error_response)?;
@@ -114,7 +113,7 @@ pub fn phase_pattern_update(payload: PhasePatternUpdate) -> CommandResult<PhaseP
 }
 
 /// Reload detection patterns for all running workers
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn patterns_reload_all() -> CommandResult<()> {
     use crate::workers::WORKER_MANAGER;
     WORKER_MANAGER
@@ -124,7 +123,7 @@ pub async fn patterns_reload_all() -> CommandResult<()> {
 }
 
 /// Reload detection patterns for a specific running worker
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn patterns_reload(account_id: i64) -> CommandResult<()> {
     use crate::workers::WORKER_MANAGER;
     WORKER_MANAGER

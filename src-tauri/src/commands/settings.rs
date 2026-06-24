@@ -5,19 +5,18 @@ use crate::db::{self, Settings, SettingsUpdate};
 use crate::validation::{
     validate_api_hash, validate_api_id, validate_bot_user_id, validate_join_rules,
 };
-use tauri::command;
 
 fn nullable_field_value<T: Copy>(field: Option<Option<T>>) -> Option<T> {
     field.flatten()
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn settings_get() -> CommandResult<Settings> {
     let conn = db::get_conn().map_err(error_response)?;
     db::get_settings(&conn).map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn settings_update(payload: SettingsUpdate) -> CommandResult<Settings> {
     // Validate API credentials if provided
     if let Some(api_id) = nullable_field_value(payload.api_id) {

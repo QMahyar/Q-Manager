@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/transport";
 import { useParams } from "react-router-dom";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -40,7 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { listAccounts, checkAccountNameExists, invokeCommand, updateGroupSlot, getGroupSlots, initGroupSlots } from "@/lib/api";
-import { validateAccountName, validateJoinRules } from "@/lib/validation";
+import { validateAccountName, validateJoinRules, validateProxyUrl } from "@/lib/validation";
 import { toast } from "@/components/ui/sonner";
 import { toastError } from "@/lib/toast-utils";
 
@@ -77,12 +77,14 @@ export default function AccountEditPage() {
   const [accountName, setAccountName] = useState("");
   const [joinMaxAttemptsOverride, setJoinMaxAttemptsOverride] = useState("");
   const [joinCooldownOverride, setJoinCooldownOverride] = useState("");
+  const [proxyUrl, setProxyUrl] = useState("");
   const [slots, setSlots] = useState<GroupSlot[]>([]);
   
   // Validation errors
   const [errors, setErrors] = useState<{
     accountName?: string;
     joinRules?: string;
+    proxy?: string;
   }>({});
 
   // Fetch account
@@ -127,6 +129,7 @@ export default function AccountEditPage() {
     setAccountName(account.account_name);
     setJoinMaxAttemptsOverride(account.join_max_attempts_override?.toString() || "");
     setJoinCooldownOverride(account.join_cooldown_seconds_override?.toString() || "");
+    setProxyUrl(account.proxy_url || "");
   }, [account, hasChanges]);
 
   useEffect(() => {
@@ -165,7 +168,14 @@ export default function AccountEditPage() {
         isValid = false;
       }
     }
-    
+
+    // Validate proxy (empty is allowed = direct connection)
+    const proxyResult = validateProxyUrl(proxyUrl);
+    if (!proxyResult.valid) {
+      newErrors.proxy = proxyResult.error;
+      isValid = false;
+    }
+
     setErrors(newErrors);
     return isValid;
   };
@@ -208,6 +218,8 @@ export default function AccountEditPage() {
           account_name: accountName,
           join_max_attempts_override: joinMaxAttemptsOverride ? parseInt(joinMaxAttemptsOverride) : null,
           join_cooldown_seconds_override: joinCooldownOverride ? parseInt(joinCooldownOverride) : null,
+          // Empty string clears the proxy (backend normalizes "" -> NULL).
+          proxy_url: proxyUrl.trim() || null,
         },
       });
 
@@ -568,6 +580,52 @@ export default function AccountEditPage() {
                 <IconAlertTriangle className="size-3.5 mt-0.5 shrink-0" />
                 {joinCooldownWarning}
               </div>
+            )}
+          </CardContent>
+        </MotionCard>
+
+        {/* Proxy */}
+        <MotionCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.28 }}
+        >
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-indigo-500/10">
+                <IconDevices className="size-4 text-indigo-500" />
+              </div>
+              <div>
+                <CardTitle>Proxy</CardTitle>
+                <CardDescription>
+                  Route this account's connection through a proxy so accounts don't all
+                  share one IP. Leave empty for a direct connection. Applied on next start.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Label htmlFor="proxyUrl">Proxy URL</Label>
+            <Input
+              id="proxyUrl"
+              value={proxyUrl}
+              onChange={(e) => {
+                setProxyUrl(e.target.value);
+                setErrors((prev) => ({ ...prev, proxy: validateProxyUrl(e.target.value).error }));
+                markChanged();
+              }}
+              placeholder="socks5://user:pass@host:1080"
+              className={errors.proxy ? "border-destructive" : ""}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {errors.proxy ? (
+              <p className="text-xs text-destructive">{errors.proxy}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Supports <code>socks5://</code>, <code>socks4://</code>, <code>http://</code>, and
+                MTProto (<code>mtproto://host:port?secret=…</code> or a <code>tg://proxy?…</code> link).
+              </p>
             )}
           </CardContent>
         </MotionCard>

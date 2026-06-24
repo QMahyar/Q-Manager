@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Q Manager",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "identifier": "com.qmahyar.q-manager",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -42,8 +42,8 @@
       "../telethon-worker/dist/telethon-worker.exe"
     ],
     "category": "Utility",
-    "shortDescription": "Werewolf Game Automation",
-    "longDescription": "Q Manager is a desktop application for automating Werewolf game interactions on Telegram.",
+    "shortDescription": "Telegram Werewolf Automation",
+    "longDescription": "Q Manager automates multi-account Telegram Werewolf gameplay. Runs as a native desktop app or a webview-free browser/server binary, with per-account proxies and connection-identity spoofing.",
     "copyright": "© 2026 Q Manager",
     "windows": {
       "certificateThumbprint": null,

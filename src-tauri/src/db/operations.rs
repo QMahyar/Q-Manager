@@ -69,16 +69,24 @@ pub struct Settings {
     pub theme_mode: String,
     pub theme_palette: String,
     pub theme_variant: String,
+    /// Connection identity sent to Telegram. NULL/empty means "use the worker's
+    /// built-in realistic default" instead of the library's "Telethon" tag.
+    pub device_model: Option<String>,
+    pub system_version: Option<String>,
+    pub app_version: Option<String>,
+    pub lang_code: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
 
 pub fn get_settings(conn: &Connection) -> Result<Settings> {
     conn.query_row(
-        "SELECT api_id, api_hash, main_bot_user_id, main_bot_username, 
+        "SELECT api_id, api_hash, main_bot_user_id, main_bot_username,
                 beta_bot_user_id, beta_bot_username, join_max_attempts_default,
                 join_cooldown_seconds_default, ban_warning_patterns_json,
-                theme_mode, theme_palette, theme_variant, created_at, updated_at
+                theme_mode, theme_palette, theme_variant,
+                device_model, system_version, app_version, lang_code,
+                created_at, updated_at
          FROM settings WHERE id = 1",
         [],
         |row| {
@@ -95,8 +103,12 @@ pub fn get_settings(conn: &Connection) -> Result<Settings> {
                 theme_mode: row.get(9)?,
                 theme_palette: row.get(10)?,
                 theme_variant: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
+                device_model: row.get(12)?,
+                system_version: row.get(13)?,
+                app_version: row.get(14)?,
+                lang_code: row.get(15)?,
+                created_at: row.get(16)?,
+                updated_at: row.get(17)?,
             })
         },
     )
@@ -116,6 +128,11 @@ pub struct SettingsUpdate {
     pub theme_mode: Option<String>,
     pub theme_palette: Option<String>,
     pub theme_variant: Option<String>,
+    // Connection identity. An empty string is treated as "use the default".
+    pub device_model: Option<String>,
+    pub system_version: Option<String>,
+    pub app_version: Option<String>,
+    pub lang_code: Option<String>,
 }
 
 pub fn update_settings(conn: &Connection, update: &SettingsUpdate) -> Result<()> {
@@ -135,6 +152,10 @@ pub fn update_settings(conn: &Connection, update: &SettingsUpdate) -> Result<()>
             theme_mode = COALESCE(?16, theme_mode),
             theme_palette = COALESCE(?17, theme_palette),
             theme_variant = COALESCE(?18, theme_variant),
+            device_model = COALESCE(?19, device_model),
+            system_version = COALESCE(?20, system_version),
+            app_version = COALESCE(?21, app_version),
+            lang_code = COALESCE(?22, lang_code),
             updated_at = datetime('now')
          WHERE id = 1",
         params![
@@ -156,6 +177,10 @@ pub fn update_settings(conn: &Connection, update: &SettingsUpdate) -> Result<()>
             update.theme_mode,
             update.theme_palette,
             update.theme_variant,
+            update.device_model,
+            update.system_version,
+            update.app_version,
+            update.lang_code,
         ],
     )?;
     Ok(())
@@ -202,6 +227,9 @@ pub struct Account {
     pub api_hash_override: Option<String>,
     pub join_max_attempts_override: Option<i32>,
     pub join_cooldown_seconds_override: Option<i32>,
+    /// Optional per-account proxy, e.g. socks5://user:pass@host:1080. Applied to
+    /// the live gameplay connection so accounts don't all egress from one IP.
+    pub proxy_url: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -210,7 +238,7 @@ pub fn list_accounts(conn: &Connection) -> Result<Vec<Account>> {
     let mut stmt = conn.prepare(
         "SELECT id, account_name, telegram_name, phone, user_id, status, last_seen_at,
                 api_id_override, api_hash_override, join_max_attempts_override,
-                join_cooldown_seconds_override, created_at, updated_at
+                join_cooldown_seconds_override, proxy_url, created_at, updated_at
          FROM accounts ORDER BY id",
     )?;
 
@@ -227,8 +255,9 @@ pub fn list_accounts(conn: &Connection) -> Result<Vec<Account>> {
             api_hash_override: row.get(8)?,
             join_max_attempts_override: row.get(9)?,
             join_cooldown_seconds_override: row.get(10)?,
-            created_at: row.get(11)?,
-            updated_at: row.get(12)?,
+            proxy_url: row.get(11)?,
+            created_at: row.get(12)?,
+            updated_at: row.get(13)?,
         })
     })?;
 
@@ -760,7 +789,7 @@ pub fn get_account(conn: &Connection, account_id: i64) -> Result<Option<Account>
     conn.query_row(
         "SELECT id, account_name, telegram_name, phone, user_id, status, last_seen_at,
                 api_id_override, api_hash_override, join_max_attempts_override,
-                join_cooldown_seconds_override, created_at, updated_at
+                join_cooldown_seconds_override, proxy_url, created_at, updated_at
          FROM accounts WHERE id = ?1",
         params![account_id],
         |row| {
@@ -776,8 +805,9 @@ pub fn get_account(conn: &Connection, account_id: i64) -> Result<Option<Account>
                 api_hash_override: row.get(8)?,
                 join_max_attempts_override: row.get(9)?,
                 join_cooldown_seconds_override: row.get(10)?,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
+                proxy_url: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
             })
         },
     )

@@ -1,5 +1,5 @@
 // Tauri API wrapper functions
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/transport";
 import { withRetry } from "./retry";
 import { apiLogger } from "./logger";
 import { getBackendError, normalizeError } from "./error-utils";

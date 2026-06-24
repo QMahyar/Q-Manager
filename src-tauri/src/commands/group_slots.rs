@@ -4,7 +4,6 @@
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use tauri::command;
 
 use crate::commands::{error_response, CommandResult};
 use crate::db;
@@ -32,7 +31,7 @@ pub struct GroupSlotUpdate {
 }
 
 /// Get group slots for an account
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn group_slots_get(account_id: i64) -> CommandResult<Vec<GroupSlot>> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -62,7 +61,7 @@ pub fn group_slots_get(account_id: i64) -> CommandResult<Vec<GroupSlot>> {
 }
 
 /// Update or create a group slot
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn group_slot_update(payload: GroupSlotUpdate) -> CommandResult<GroupSlot> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -128,7 +127,7 @@ pub fn group_slot_update(payload: GroupSlotUpdate) -> CommandResult<GroupSlot> {
 }
 
 /// Initialize default group slots for a new account
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn group_slots_init(account_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -166,7 +165,7 @@ pub struct TelegramGroup {
 
 /// Fetch groups for an account (requires account to be connected)
 /// This creates a temporary Telethon worker session to fetch the chat list
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn account_fetch_groups(account_id: i64) -> CommandResult<Vec<TelegramGroup>> {
     use crate::db;
 

@@ -12,6 +12,46 @@ use crate::constants::TELETHON_REQUEST_TIMEOUT_MS;
 
 pub mod login_session;
 
+/// Connection identity + proxy passed to the worker as a JSON argv on spawn.
+/// All fields are optional; omitted/empty ones fall back to the worker's
+/// built-in realistic defaults (so we never identify as "Telethon").
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConnectionConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lang_code: Option<String>,
+    /// Raw proxy URL (socks5://, http://, mtproto://, tg://proxy?...). The worker
+    /// parses the scheme and configures Telethon accordingly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_url: Option<String>,
+}
+
+impl ConnectionConfig {
+    /// Build from a settings row (device identity) + an optional account proxy.
+    /// Empty strings are normalized to None so the worker uses its defaults.
+    pub fn from_parts(
+        device_model: Option<String>,
+        system_version: Option<String>,
+        app_version: Option<String>,
+        lang_code: Option<String>,
+        proxy_url: Option<String>,
+    ) -> Self {
+        let norm = |v: Option<String>| v.filter(|s| !s.trim().is_empty());
+        ConnectionConfig {
+            device_model: norm(device_model),
+            system_version: norm(system_version),
+            app_version: norm(app_version),
+            lang_code: norm(lang_code),
+            proxy_url: norm(proxy_url),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelethonButton {
     pub text: String,
@@ -78,10 +118,27 @@ impl Drop for TelethonClient {
 
 impl TelethonClient {
     pub fn spawn(api_id: i64, api_hash: &str, session_path: &str) -> Result<Self, String> {
+        Self::spawn_with_config(api_id, api_hash, session_path, &ConnectionConfig::default())
+    }
+
+    /// Spawn the worker with connection identity (device spoofing) and an optional
+    /// per-account proxy. The config is passed as a JSON 4th argv so the worker
+    /// can apply `device_model`/`system_version`/`app_version`/`lang_code` and
+    /// `proxy` to the underlying TelegramClient. Older invocations that omit it
+    /// (via `spawn`) keep working with the worker's built-in defaults.
+    pub fn spawn_with_config(
+        api_id: i64,
+        api_hash: &str,
+        session_path: &str,
+        config: &ConnectionConfig,
+    ) -> Result<Self, String> {
+        let config_json =
+            serde_json::to_string(config).map_err(|e| format!("Failed to encode worker config: {}", e))?;
         let mut child = Command::new(get_worker_path())
             .arg(api_id.to_string())
             .arg(api_hash)
             .arg(session_path)
+            .arg(config_json)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

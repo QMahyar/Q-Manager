@@ -1,7 +1,8 @@
 {
   "name": "q-manager",
   "private": true,
-  "version": "1.0.1",
+  "version": "2.0.0",
+  "description": "Multi-account Telegram Werewolf automation — runs as a native desktop app or a webview-free browser/server binary (Windows/macOS/Linux/ARM/Termux).",
   "type": "module",
   "scripts": {
     "dev": "vite",

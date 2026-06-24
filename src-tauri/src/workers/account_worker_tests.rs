@@ -29,6 +29,7 @@ mod tests {
             beta_bot_id: None,
             max_join_attempts: 5,
             join_cooldown_seconds: 5,
+            connection: Default::default(),
         }
     }
 

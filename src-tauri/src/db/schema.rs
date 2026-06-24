@@ -54,6 +54,10 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             theme_mode TEXT NOT NULL DEFAULT 'system',
             theme_palette TEXT NOT NULL DEFAULT 'zinc',
             theme_variant TEXT NOT NULL DEFAULT 'subtle',
+            device_model TEXT,
+            system_version TEXT,
+            app_version TEXT,
+            lang_code TEXT,
             created_at TEXT,
             updated_at TEXT
         )",
@@ -81,6 +85,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             api_hash_override TEXT,
             join_max_attempts_override INTEGER,
             join_cooldown_seconds_override INTEGER,
+            proxy_url TEXT,
             created_at TEXT,
             updated_at TEXT
         )",
@@ -320,5 +325,28 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // ========================================================================
+    // Migrations — add columns to pre-existing tables. `CREATE TABLE IF NOT
+    // EXISTS` above is a no-op on an already-created table, so new columns must
+    // be added with idempotent ALTERs for databases created by older versions.
+    // ========================================================================
+    add_column_if_missing(conn, "settings", "device_model TEXT")?;
+    add_column_if_missing(conn, "settings", "system_version TEXT")?;
+    add_column_if_missing(conn, "settings", "app_version TEXT")?;
+    add_column_if_missing(conn, "settings", "lang_code TEXT")?;
+    add_column_if_missing(conn, "accounts", "proxy_url TEXT")?;
+
     Ok(())
+}
+
+/// Add a column to a table, ignoring the error if it already exists.
+/// SQLite has no `ADD COLUMN IF NOT EXISTS`, so we run the ALTER and tolerate
+/// the "duplicate column name" failure to keep migrations idempotent.
+fn add_column_if_missing(conn: &Connection, table: &str, column_def: &str) -> Result<()> {
+    let sql = format!("ALTER TABLE {table} ADD COLUMN {column_def}");
+    match conn.execute(&sql, []) {
+        Ok(_) => Ok(()),
+        Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
+        Err(e) => Err(e),
+    }
 }

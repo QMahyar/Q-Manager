@@ -32,12 +32,15 @@ if ($Clean -or (Test-Path (Join-Path $ScriptDir "dist"))) {
 }
 
 python -m pip install --upgrade pip | Out-Null
-python -m pip install telethon pyinstaller cryptg | Out-Null
+# python-socks is required for SOCKS5/SOCKS4/HTTP proxy support.
+python -m pip install telethon pyinstaller cryptg python-socks | Out-Null
 
 $DistDir = if ($OutputDir -ne "") { $OutputDir } else { Join-Path $ScriptDir "dist" }
 
 python -m PyInstaller --clean --noconfirm --onefile `
     --name telethon-worker `
+    --hidden-import python_socks `
+    --hidden-import python_socks.async_.asyncio `
     --distpath $DistDir `
     $WorkerScript
 

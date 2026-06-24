@@ -4,16 +4,122 @@ import contextlib
 import json
 import sys
 import traceback
-from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List, Tuple
 from telethon import TelegramClient, events, errors
 from telethon.errors import SessionPasswordNeededError
+
+# Realistic default connection identity. Without this, Telethon reports the
+# device as "Telethon", which is a trivial fingerprint for a userbot. These are
+# overridden per-install by the config passed on argv.
+DEFAULT_DEVICE_MODEL = "Desktop"
+DEFAULT_SYSTEM_VERSION = "Windows 10"
+DEFAULT_APP_VERSION = "5.3.1 x64"
+DEFAULT_LANG_CODE = "en"
+
+
+@dataclass
+class ConnectionConfig:
+    device_model: str = DEFAULT_DEVICE_MODEL
+    system_version: str = DEFAULT_SYSTEM_VERSION
+    app_version: str = DEFAULT_APP_VERSION
+    lang_code: str = DEFAULT_LANG_CODE
+    proxy_url: Optional[str] = None
+
+    @staticmethod
+    def from_json(raw: str) -> "ConnectionConfig":
+        cfg = ConnectionConfig()
+        if not raw:
+            return cfg
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            sys.stderr.write("[telethon-worker] Invalid connection config JSON; using defaults.\n")
+            sys.stderr.flush()
+            return cfg
+        # Only override when a non-empty value is supplied.
+        for key in ("device_model", "system_version", "app_version", "lang_code"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                setattr(cfg, key, val.strip())
+        proxy = data.get("proxy_url")
+        if isinstance(proxy, str) and proxy.strip():
+            cfg.proxy_url = proxy.strip()
+        return cfg
+
+
+def _parse_proxy(proxy_url: Optional[str]) -> Tuple[Optional[Any], Optional[Any]]:
+    """Parse a proxy URL into Telethon's (connection, proxy) kwargs.
+
+    Returns (connection, proxy):
+      - SOCKS5/SOCKS4/HTTP -> (None, ('socks5', host, port, True, user, pass))
+      - MTProto            -> (ConnectionTcpMTProxyRandomizedIntermediate,
+                               (host, port, secret))
+      - None / unparseable -> (None, None)
+
+    Accepts mtproto://host:port?secret=HEX and Telegram's own
+    tg://proxy?server=host&port=port&secret=HEX share link.
+    """
+    if not proxy_url:
+        return None, None
+
+    from urllib.parse import urlparse, parse_qs, unquote
+
+    raw = proxy_url.strip()
+    lower = raw.lower()
+
+    # MTProto
+    if lower.startswith("mtproto://") or lower.startswith("tg://proxy"):
+        try:
+            from telethon.network import ConnectionTcpMTProxyRandomizedIntermediate
+        except Exception:
+            sys.stderr.write("[telethon-worker] MTProto proxy requested but connection class unavailable.\n")
+            sys.stderr.flush()
+            return None, None
+        parsed = urlparse(raw)
+        qs = parse_qs(parsed.query)
+        # tg://proxy uses server/port query params; mtproto:// uses netloc host:port.
+        host = (qs.get("server", [None])[0]) or (parsed.hostname)
+        port_str = (qs.get("port", [None])[0]) or (str(parsed.port) if parsed.port else None)
+        secret = qs.get("secret", [None])[0]
+        if secret:
+            secret = unquote(secret)
+        if not (host and port_str and secret):
+            sys.stderr.write("[telethon-worker] Incomplete MTProto proxy (need host, port, secret).\n")
+            sys.stderr.flush()
+            return None, None
+        try:
+            port = int(port_str)
+        except ValueError:
+            return None, None
+        return ConnectionTcpMTProxyRandomizedIntermediate, (host, port, secret)
+
+    # SOCKS / HTTP via PySocks. urlparse needs a scheme it recognizes; map ours.
+    parsed = urlparse(raw)
+    scheme = parsed.scheme.lower()
+    proxy_type = {
+        "socks5": "socks5",
+        "socks4": "socks4",
+        "http": "http",
+        "https": "http",
+    }.get(scheme)
+    if not proxy_type or not parsed.hostname or not parsed.port:
+        sys.stderr.write(f"[telethon-worker] Unsupported/invalid proxy URL: {raw}\n")
+        sys.stderr.flush()
+        return None, None
+    username = unquote(parsed.username) if parsed.username else None
+    password = unquote(parsed.password) if parsed.password else None
+    # Telethon proxy tuple: (type, host, port, rdns, username, password)
+    proxy_tuple = (proxy_type, parsed.hostname, parsed.port, True, username, password)
+    return None, proxy_tuple
+
 
 @dataclass
 class WorkerState:
     api_id: int
     api_hash: str
     session_path: str
+    conn_config: ConnectionConfig = field(default_factory=ConnectionConfig)
     phone: Optional[str] = None
     client: Optional[TelegramClient] = None
     authorized: bool = False
@@ -144,7 +250,21 @@ async def ensure_client(state: WorkerState, event_queue: asyncio.Queue) -> Teleg
         if state.client:
             return state.client
 
-        client = TelegramClient(state.session_path, state.api_id, state.api_hash)
+        cfg = state.conn_config
+        connection, proxy = _parse_proxy(cfg.proxy_url)
+        client_kwargs: Dict[str, Any] = {
+            "device_model": cfg.device_model,
+            "system_version": cfg.system_version,
+            "app_version": cfg.app_version,
+            "lang_code": cfg.lang_code,
+            "system_lang_code": cfg.lang_code,
+        }
+        if connection is not None:
+            client_kwargs["connection"] = connection
+        if proxy is not None:
+            client_kwargs["proxy"] = proxy
+
+        client = TelegramClient(state.session_path, state.api_id, state.api_hash, **client_kwargs)
         await client.connect()
 
         # Start client to ensure proper initialization
@@ -351,14 +471,21 @@ async def handle_command(state: WorkerState, request: Dict[str, Any], event_queu
 
 async def main() -> None:
     if len(sys.argv) < 4:
-        sys.stderr.write("Usage: telethon_worker.py <api_id> <api_hash> <session_path>\n")
+        sys.stderr.write("Usage: telethon_worker.py <api_id> <api_hash> <session_path> [config_json]\n")
         sys.exit(1)
 
     api_id = int(sys.argv[1])
     api_hash = sys.argv[2]
     session_path = sys.argv[3]
+    # Optional 4th arg: JSON connection config (device identity + proxy).
+    conn_config = ConnectionConfig.from_json(sys.argv[4] if len(sys.argv) > 4 else "")
 
-    state = WorkerState(api_id=api_id, api_hash=api_hash, session_path=session_path)
+    state = WorkerState(
+        api_id=api_id,
+        api_hash=api_hash,
+        session_path=session_path,
+        conn_config=conn_config,
+    )
     state.client_lock = asyncio.Lock()
 
     EVENT_QUEUE_SIZE = 200

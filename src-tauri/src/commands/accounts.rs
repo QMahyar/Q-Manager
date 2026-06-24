@@ -8,7 +8,6 @@ use crate::workers::WORKER_MANAGER;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::command;
 use tokio::task::JoinSet;
 
 /// Get the sessions directory path
@@ -16,13 +15,13 @@ fn get_sessions_dir() -> PathBuf {
     crate::utils::fs::get_sessions_dir()
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn accounts_list() -> CommandResult<Vec<Account>> {
     let conn = db::get_conn().map_err(error_response)?;
     db::list_accounts(&conn).map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_create(payload: AccountCreate) -> CommandResult<Account> {
     let conn = db::get_conn().map_err(error_response)?;
     let id = db::create_account(&conn, &payload).map_err(error_response)?;
@@ -31,7 +30,7 @@ pub fn account_create(payload: AccountCreate) -> CommandResult<Account> {
         .ok_or_else(|| error_response("Failed to find created account"))
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn account_delete(account_id: i64) -> CommandResult<()> {
     // First stop the worker if running
     let _ = WORKER_MANAGER.stop_account(account_id).await;
@@ -85,7 +84,7 @@ pub async fn account_delete(account_id: i64) -> CommandResult<()> {
     Ok(())
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn account_start(account_id: i64) -> CommandResult<()> {
     WORKER_MANAGER
         .start_account(account_id)
@@ -93,7 +92,7 @@ pub async fn account_start(account_id: i64) -> CommandResult<()> {
         .map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn account_stop(account_id: i64) -> CommandResult<()> {
     WORKER_MANAGER
         .stop_account(account_id)
@@ -101,7 +100,7 @@ pub async fn account_stop(account_id: i64) -> CommandResult<()> {
         .map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn accounts_start_all() -> CommandResult<Vec<BulkStartReport>> {
     let accounts = {
         let conn = db::get_conn().map_err(error_response)?;
@@ -143,12 +142,12 @@ pub async fn accounts_start_all() -> CommandResult<Vec<BulkStartReport>> {
     Ok(reports)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn accounts_stop_all() -> CommandResult<()> {
     WORKER_MANAGER.stop_all().await.map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn accounts_start_selected(account_ids: Vec<i64>) -> CommandResult<Vec<BulkStartReport>> {
     let accounts = {
         let conn = db::get_conn().map_err(error_response)?;
@@ -196,7 +195,7 @@ pub async fn accounts_start_selected(account_ids: Vec<i64>) -> CommandResult<Vec
     Ok(reports)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn accounts_stop_selected(account_ids: Vec<i64>) -> CommandResult<()> {
     for id in account_ids {
         if let Err(e) = WORKER_MANAGER.stop_account(id).await {
@@ -257,9 +256,10 @@ pub struct AccountUpdate {
     pub api_hash_override: Option<Option<String>>,
     pub join_max_attempts_override: Option<Option<i32>>,
     pub join_cooldown_seconds_override: Option<Option<i32>>,
+    pub proxy_url: Option<Option<String>>,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_update(payload: AccountUpdate) -> CommandResult<Account> {
     // Validate fields if provided
     if let Some(ref name) = payload.account_name {
@@ -273,6 +273,12 @@ pub fn account_update(payload: AccountUpdate) -> CommandResult<Account> {
             validate_api_hash(api_hash).map_err(error_response)?;
         }
     }
+    // Validate proxy URL if a non-empty value is being set.
+    if let Some(proxy) = payload.proxy_url.as_ref().and_then(|value| value.as_ref()) {
+        if !proxy.trim().is_empty() {
+            crate::validation::validate_proxy_url(proxy).map_err(error_response)?;
+        }
+    }
 
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -283,8 +289,9 @@ pub fn account_update(payload: AccountUpdate) -> CommandResult<Account> {
             api_hash_override = CASE WHEN ?4 THEN ?5 ELSE api_hash_override END,
             join_max_attempts_override = CASE WHEN ?6 THEN ?7 ELSE join_max_attempts_override END,
             join_cooldown_seconds_override = CASE WHEN ?8 THEN ?9 ELSE join_cooldown_seconds_override END,
+            proxy_url = CASE WHEN ?10 THEN ?11 ELSE proxy_url END,
             updated_at = datetime('now')
-         WHERE id = ?10",
+         WHERE id = ?12",
         params![
             payload.account_name,
             payload.api_id_override.is_some(),
@@ -295,6 +302,9 @@ pub fn account_update(payload: AccountUpdate) -> CommandResult<Account> {
             payload.join_max_attempts_override.flatten(),
             payload.join_cooldown_seconds_override.is_some(),
             payload.join_cooldown_seconds_override.flatten(),
+            payload.proxy_url.is_some(),
+            // Normalize empty string to NULL so "clear the proxy" works.
+            payload.proxy_url.clone().flatten().filter(|s| !s.trim().is_empty()),
             payload.id,
         ],
     )
@@ -305,7 +315,7 @@ pub fn account_update(payload: AccountUpdate) -> CommandResult<Account> {
         .ok_or_else(|| error_response("Failed to find updated account"))
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_get(account_id: i64) -> CommandResult<Account> {
     let conn = db::get_conn().map_err(error_response)?;
     db::get_account(&conn, account_id)
@@ -314,7 +324,7 @@ pub fn account_get(account_id: i64) -> CommandResult<Account> {
 }
 
 /// Check if an account name already exists (case-insensitive)
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_name_exists(name: String) -> CommandResult<bool> {
     let conn = db::get_conn().map_err(error_response)?;
     db::account_name_exists(&conn, &name).map_err(error_response)
@@ -334,7 +344,7 @@ pub struct SessionRefreshResult {
 /// Refresh an account's phone, user_id and telegram_name by querying the live Telethon session.
 /// This is useful after importing accounts where validation was skipped (e.g. no API credentials
 /// were configured at import time, or the Telethon worker was unavailable).
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_refresh_session(account_id: i64) -> CommandResult<SessionRefreshResult> {
     use crate::telethon;
 

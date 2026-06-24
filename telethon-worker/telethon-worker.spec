@@ -2,11 +2,11 @@
 
 
 a = Analysis(
-    ['E:\\AI code\\WerewolfBot\\q-manager\\telethon-worker\\telethon_worker.py'],
+    ['telethon_worker.py'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['python_socks', 'python_socks.async_.asyncio'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

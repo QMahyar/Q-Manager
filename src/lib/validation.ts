@@ -358,6 +358,45 @@ export function validateApiHash(apiHash: string): ValidationResult {
 /**
  * Validate join rules
  */
+/**
+ * Validate a per-account proxy URL. Accepts SOCKS5/SOCKS4/HTTP(S) and MTProto
+ * (mtproto://host:port?secret=… or a tg://proxy?server=…&port=…&secret=… link).
+ * An empty string is treated as valid (means "no proxy / direct connection").
+ */
+export function validateProxyUrl(value: string): ValidationResult {
+  const trimmed = value.trim();
+  if (!trimmed) return { valid: true }; // empty = direct connection
+
+  const lower = trimmed.toLowerCase();
+
+  // MTProto must carry a non-empty secret.
+  if (lower.startsWith("mtproto://") || lower.startsWith("tg://proxy")) {
+    const hasSecret = /[?&]secret=[^&\s]+/.test(trimmed);
+    return hasSecret
+      ? { valid: true }
+      : { valid: false, error: "MTProto proxy must include a non-empty 'secret'" };
+  }
+
+  if (!/^(socks5|socks4|https?):\/\//i.test(trimmed)) {
+    return {
+      valid: false,
+      error: "Proxy must start with socks5://, socks4://, http://, https://, or mtproto://",
+    };
+  }
+
+  // Require host:port after the scheme (strip optional user:pass@ credentials).
+  const afterScheme = trimmed.split("://")[1] ?? "";
+  const hostPort = (afterScheme.split("@").pop() ?? "").split(/[/?]/)[0];
+  const lastColon = hostPort.lastIndexOf(":");
+  const host = lastColon > 0 ? hostPort.slice(0, lastColon) : "";
+  const port = lastColon > 0 ? Number(hostPort.slice(lastColon + 1)) : NaN;
+  if (!host) return { valid: false, error: "Proxy must include a host" };
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return { valid: false, error: "Proxy must include a valid port (1-65535), e.g. socks5://host:1080" };
+  }
+  return { valid: true };
+}
+
 export function validateJoinRules(maxAttempts: number, cooldownSeconds: number): ValidationResult {
   if (!Number.isInteger(maxAttempts)) {
     return { valid: false, error: "Maximum attempts must be an integer" };

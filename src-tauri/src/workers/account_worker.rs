@@ -70,6 +70,9 @@ pub struct WorkerConfig {
     pub beta_bot_id: Option<i64>,
     pub max_join_attempts: i32,
     pub join_cooldown_seconds: i32,
+    /// Connection identity (device spoofing) + optional per-account proxy.
+    /// Applied to the live gameplay TelethonClient on spawn.
+    pub connection: crate::telethon::ConnectionConfig,
 }
 
 /// Account worker - manages a single Telegram account
@@ -193,7 +196,7 @@ impl AccountWorker {
             .to_string_lossy()
             .to_string();
         let session =
-            TelethonClient::spawn(self.config.api_id, &self.config.api_hash, &session_path)?;
+            TelethonClient::spawn_with_config(self.config.api_id, &self.config.api_hash, &session_path, &self.config.connection)?;
         let response = session
             .request_async("start_updates", serde_json::json!({}))
             .await?;
@@ -1452,7 +1455,7 @@ impl AccountWorker {
             .join("telethon.session")
             .to_string_lossy()
             .to_string();
-        match TelethonClient::spawn(self.config.api_id, &self.config.api_hash, &session_path) {
+        match TelethonClient::spawn_with_config(self.config.api_id, &self.config.api_hash, &session_path, &self.config.connection) {
             Ok(session) => {
                 let response = session
                     .request_async("start_updates", serde_json::json!({}))
@@ -1619,6 +1622,7 @@ mod inline_tests {
             beta_bot_id: None,
             max_join_attempts: 3,
             join_cooldown_seconds: 5,
+            connection: Default::default(),
         }
     }
 

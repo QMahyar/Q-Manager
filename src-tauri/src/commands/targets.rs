@@ -5,7 +5,6 @@
 use rusqlite::params;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use tauri::command;
 
 use crate::commands::{error_response, CommandResult};
 use crate::db;
@@ -22,7 +21,7 @@ pub struct TargetDefault {
     pub rule_json: String,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_defaults_get(action_id: i64) -> CommandResult<Option<TargetDefault>> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -41,7 +40,7 @@ pub fn target_defaults_get(action_id: i64) -> CommandResult<Option<TargetDefault
     .or(Ok(None))
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_default_set(action_id: i64, rule_json: String) -> CommandResult<TargetDefault> {
     // Validate rule JSON
     validate_target_rule_json(&rule_json).map_err(error_response)?;
@@ -83,7 +82,7 @@ pub struct TargetOverride {
     pub rule_json: String,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_override_get(
     account_id: i64,
     action_id: i64,
@@ -107,7 +106,7 @@ pub fn target_override_get(
     .or(Ok(None))
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_override_set(
     account_id: i64,
     action_id: i64,
@@ -142,7 +141,7 @@ pub fn target_override_set(
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_override_delete(account_id: i64, action_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
     conn.execute(
@@ -153,7 +152,7 @@ pub fn target_override_delete(account_id: i64, action_id: i64) -> CommandResult<
     Ok(())
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_overrides_list(account_id: i64) -> CommandResult<Vec<TargetOverride>> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -189,7 +188,7 @@ pub struct BlacklistEntry {
     pub button_text: String,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn blacklist_list(account_id: i64, action_id: i64) -> CommandResult<Vec<BlacklistEntry>> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -216,7 +215,7 @@ pub fn blacklist_list(account_id: i64, action_id: i64) -> CommandResult<Vec<Blac
         .map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn blacklist_add(
     account_id: i64,
     action_id: i64,
@@ -258,7 +257,7 @@ pub fn blacklist_add(
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn blacklist_remove(entry_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
     conn.execute(
@@ -281,7 +280,7 @@ pub struct DelayDefault {
     pub max_seconds: i32,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delay_default_get(action_id: i64) -> CommandResult<Option<DelayDefault>> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -301,7 +300,7 @@ pub fn delay_default_get(action_id: i64) -> CommandResult<Option<DelayDefault>> 
     .or(Ok(None))
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delay_default_set(
     action_id: i64,
     min_seconds: i32,
@@ -348,7 +347,7 @@ pub struct DelayOverride {
     pub max_seconds: i32,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delay_override_get(account_id: i64, action_id: i64) -> CommandResult<Option<DelayOverride>> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -370,7 +369,7 @@ pub fn delay_override_get(account_id: i64, action_id: i64) -> CommandResult<Opti
     .or(Ok(None))
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delay_override_set(
     account_id: i64,
     action_id: i64,
@@ -405,7 +404,7 @@ pub fn delay_override_set(
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn delay_override_delete(account_id: i64, action_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
     conn.execute(
@@ -430,7 +429,7 @@ pub struct TargetPair {
     pub target_b: String,
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_pairs_list(account_id: i64, action_id: i64) -> CommandResult<Vec<TargetPair>> {
     let conn = db::get_conn().map_err(error_response)?;
 
@@ -457,7 +456,7 @@ pub fn target_pairs_list(account_id: i64, action_id: i64) -> CommandResult<Vec<T
     pairs.collect::<Result<Vec<_>, _>>().map_err(error_response)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_pair_add(
     account_id: i64,
     action_id: i64,
@@ -525,7 +524,7 @@ pub fn target_pair_add(
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn target_pair_remove(pair_id: i64) -> CommandResult<()> {
     let conn = db::get_conn().map_err(error_response)?;
     conn.execute("DELETE FROM target_pairs WHERE id = ?1", params![pair_id])
@@ -537,7 +536,7 @@ pub fn target_pair_remove(pair_id: i64) -> CommandResult<()> {
 // Copy/Paste Targets
 // ============================================================================
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn targets_copy(
     from_account_id: i64,
     to_account_ids: Vec<i64>,

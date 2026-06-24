@@ -15,6 +15,7 @@ const baseAccounts: Account[] = [
     last_seen_at: null,
     api_id_override: null,
     api_hash_override: null,
+    proxy_url: null,
     join_max_attempts_override: null,
     join_cooldown_seconds_override: null,
     created_at: "2024-01-01T00:00:00Z",

@@ -345,8 +345,72 @@ pub fn validate_api_hash(api_hash: &str) -> ValidationResult<()> {
 }
 
 // ============================================================================
-// Join Rules Validation
+// Proxy Validation
 // ============================================================================
+
+/// Validate a per-account proxy URL. Accepts:
+///   - SOCKS/HTTP:  socks5://[user:pass@]host:port  (also socks4://, http://, https://)
+///   - MTProto:     mtproto://host:port?secret=HEX   (or tg://proxy?server=..&port=..&secret=..)
+/// An empty string is the caller's responsibility to skip (means "no proxy").
+pub fn validate_proxy_url(proxy: &str) -> ValidationResult<()> {
+    let trimmed = proxy.trim();
+    if trimmed.is_empty() {
+        return Err(ValidationError {
+            field: "proxy_url".to_string(),
+            message: "Proxy URL cannot be empty".to_string(),
+        });
+    }
+
+    let err = |msg: &str| ValidationError {
+        field: "proxy_url".to_string(),
+        message: msg.to_string(),
+    };
+
+    let lower = trimmed.to_ascii_lowercase();
+
+    // MTProto, either as mtproto:// or Telegram's own tg://proxy?... share link.
+    let is_mtproto = lower.starts_with("mtproto://") || lower.starts_with("tg://proxy");
+    if is_mtproto {
+        // Must carry a secret. Telegram MTProto secrets are hex (often prefixed
+        // with dd/ee) or base64url for the "fake-TLS" form, so just require the
+        // param to be present and non-empty rather than over-validating.
+        let has_secret = trimmed
+            .split(['?', '&'])
+            .any(|part| {
+                let p = part.trim();
+                (p.starts_with("secret=") || p.starts_with("secret%3D"))
+                    && p.split('=').nth(1).map(|v| !v.is_empty()).unwrap_or(false)
+            });
+        if !has_secret {
+            return Err(err("MTProto proxy must include a non-empty 'secret'"));
+        }
+        return Ok(());
+    }
+
+    // SOCKS / HTTP proxies.
+    let scheme_ok = ["socks5://", "socks4://", "http://", "https://"]
+        .iter()
+        .any(|s| lower.starts_with(s));
+    if !scheme_ok {
+        return Err(err(
+            "Proxy must start with socks5://, socks4://, http://, https://, or mtproto://",
+        ));
+    }
+
+    // Require a host:port after the scheme (strip optional user:pass@ credentials).
+    let after_scheme = trimmed.splitn(2, "://").nth(1).unwrap_or("");
+    let host_port = after_scheme.rsplitn(2, '@').next().unwrap_or("");
+    let host_port = host_port.split(['/', '?']).next().unwrap_or("");
+    let port = host_port.rsplitn(2, ':').next().unwrap_or("");
+    let host = host_port.rsplitn(2, ':').nth(1).unwrap_or("");
+    if host.is_empty() {
+        return Err(err("Proxy must include a host"));
+    }
+    match port.parse::<u32>() {
+        Ok(p) if (1..=65535).contains(&p) => Ok(()),
+        _ => Err(err("Proxy must include a valid port (1-65535), e.g. socks5://host:1080")),
+    }
+}
 
 /// Validate join rules
 pub fn validate_join_rules(max_attempts: i32, cooldown_seconds: i32) -> ValidationResult<()> {

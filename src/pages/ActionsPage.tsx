@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionDialogs } from "@/components/actions/ActionDialogs";
 import { toast } from "@/components/ui/sonner";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@/lib/transport";
 import { getTargetDefault, setTargetDefault, getDelayDefault, setDelayDefault, reloadAllPatterns, invokeCommand, exportActionPatterns, importActionPatterns } from "@/lib/api";
 import type { Action, ActionCreate, ActionUpdate, ActionPattern, ButtonType } from "@/lib/types";
 import { useActionsData } from "@/hooks/useActionsData";

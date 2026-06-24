@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
 fn main() {
-    tauri_build::build();
+    // Only run the Tauri build step for desktop builds. Headless/server builds
+    // (e.g. Termux/ARM) don't link Tauri, so invoking it would be wrong/fail.
+    if std::env::var("CARGO_FEATURE_DESKTOP").is_ok() {
+        tauri_build::build();
+    }
 
     // Copy Telethon worker to target directory for development
     copy_telethon_worker();

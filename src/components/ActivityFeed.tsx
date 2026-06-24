@@ -11,7 +11,7 @@ import {
   IconChevronUp,
   IconWaveSquare,
 } from "@tabler/icons-react";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@/lib/transport";
 import type { Event } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";

@@ -70,6 +70,11 @@ export default function SettingsPage() {
   const [betaBotUsername, setBetaBotUsername] = useState("");
   const [joinMaxAttempts, setJoinMaxAttempts] = useState(5);
   const [joinCooldown, setJoinCooldown] = useState(5);
+  // Connection identity (device spoofing). Empty = use the worker's realistic default.
+  const [deviceModel, setDeviceModel] = useState("");
+  const [systemVersion, setSystemVersion] = useState("");
+  const [appVersion, setAppVersion] = useState("");
+  const [langCode, setLangCode] = useState("");
   const [banWarningPatterns, setBanWarningPatterns] = useState<BanWarningPattern[]>([]);
   const [newBanPattern, setNewBanPattern] = useState("");
   const [newBanPatternIsRegex, setNewBanPatternIsRegex] = useState(false);
@@ -116,6 +121,10 @@ export default function SettingsPage() {
     setBetaBotUsername(settings.beta_bot_username || "");
     setJoinMaxAttempts(settings.join_max_attempts_default);
     setJoinCooldown(settings.join_cooldown_seconds_default);
+    setDeviceModel(settings.device_model || "");
+    setSystemVersion(settings.system_version || "");
+    setAppVersion(settings.app_version || "");
+    setLangCode(settings.lang_code || "");
     setBanWarningPatterns(parseBanPatterns(settings.ban_warning_patterns_json));
     setThemeMode(settings.theme_mode ?? theme);
     setThemePalette(settings.theme_palette ?? palette);
@@ -203,6 +212,10 @@ export default function SettingsPage() {
       join_max_attempts_default: joinMaxAttempts,
       join_cooldown_seconds_default: joinCooldown,
       ban_warning_patterns_json: JSON.stringify(banWarningPatterns),
+      device_model: deviceModel.trim() || null,
+      system_version: systemVersion.trim() || null,
+      app_version: appVersion.trim() || null,
+      lang_code: langCode.trim() || null,
       theme_mode: themeMode,
       theme_palette: themePalette,
       theme_variant: themeVariant,
@@ -516,6 +529,73 @@ export default function SettingsPage() {
                 {errors.apiHash && <p className="text-xs text-destructive">{errors.apiHash}</p>}
               </div>
             </div>
+          </CardContent>
+        </MotionCard>
+
+        {/* Connection Identity (device spoofing) */}
+        <MotionCard
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.12 }}
+        >
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-indigo-500/10">
+                <IconDeviceDesktop className="size-4 text-indigo-500" />
+              </div>
+              <div>
+                <CardTitle>Connection Identity</CardTitle>
+                <CardDescription>
+                  How accounts identify themselves to Telegram. Leave blank to use a
+                  realistic default — this avoids the tell-tale "Telethon" device tag.
+                  Applied to new logins and on next start of running accounts.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="deviceModel" className="text-xs text-muted-foreground">Device Model</Label>
+                <Input
+                  id="deviceModel"
+                  value={deviceModel}
+                  onChange={(e) => { setDeviceModel(e.target.value); markChanged(); }}
+                  placeholder="Desktop"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="systemVersion" className="text-xs text-muted-foreground">System Version</Label>
+                <Input
+                  id="systemVersion"
+                  value={systemVersion}
+                  onChange={(e) => { setSystemVersion(e.target.value); markChanged(); }}
+                  placeholder="Windows 10"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="appVersion" className="text-xs text-muted-foreground">App Version</Label>
+                <Input
+                  id="appVersion"
+                  value={appVersion}
+                  onChange={(e) => { setAppVersion(e.target.value); markChanged(); }}
+                  placeholder="5.3.1 x64"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="langCode" className="text-xs text-muted-foreground">Language Code</Label>
+                <Input
+                  id="langCode"
+                  value={langCode}
+                  onChange={(e) => { setLangCode(e.target.value); markChanged(); }}
+                  placeholder="en"
+                  maxLength={8}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Tip: match a real Telegram Desktop/mobile client. Per-account proxies are set on each account's Edit page.
+            </p>
           </CardContent>
         </MotionCard>
 

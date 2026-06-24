@@ -48,7 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@/lib/transport";
 import {
   importAccountPreflight,
   importAccountResolve,

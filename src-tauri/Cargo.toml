@@ -1,7 +1,7 @@
 [package]
 name = "q-manager"
-version = "1.0.1"
-description = "Q Manager - Werewolf Game Automation"
+version = "2.0.0"
+description = "Q Manager - Telegram Werewolf automation (desktop + headless browser server)"
 authors = ["Mahyar"]
 license = "MIT"
 repository = "https://github.com/QMahyar/Q-Manager"
@@ -28,12 +28,12 @@ test = false
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# Tauri
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-opener = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-single-instance = "2"
+# Tauri (desktop only — optional so headless/Termux builds drop the webview)
+tauri = { version = "2", features = ["tray-icon"], optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-fs = { version = "2", optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -83,4 +83,27 @@ uuid = { version = "1", features = ["v4"] }
 
 # Image processing
 image = "0.25"
+
+# --- Headless web-server mode (browser app; enables Termux/ARM/server builds) ---
+# Optional so the desktop build doesn't pull them in, and so a future
+# `--no-default-features` build can drop the webview entirely.
+axum = { version = "0.7", features = ["ws"], optional = true }
+rust-embed = { version = "8", features = ["interpolate-folder-path"], optional = true }
+mime_guess = { version = "2", optional = true }
+local-ip-address = { version = "0.6", optional = true }
+
+[features]
+default = ["desktop"]
+# Native desktop app (Tauri webview, system tray, native dialogs).
+desktop = [
+    "dep:tauri",
+    "dep:tauri-plugin-opener",
+    "dep:tauri-plugin-dialog",
+    "dep:tauri-plugin-fs",
+    "dep:tauri-plugin-single-instance",
+]
+# Headless HTTP+WebSocket server that serves the built UI to a browser.
+# Build a webview-free binary (Termux/ARM/headless) with:
+#   cargo build --release --no-default-features --features server
+server = ["dep:axum", "dep:rust-embed", "dep:mime_guess", "dep:local-ip-address"]
 

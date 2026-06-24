@@ -19,7 +19,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
-import { getVersion } from "@tauri-apps/api/app";
+import { getVersion } from "@/lib/transport";
 import { checkSystem } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { listAccounts, listActions } from "@/lib/api";

@@ -17,6 +17,10 @@ export interface Settings {
   theme_mode: ThemeMode;
   theme_palette: ThemePalette;
   theme_variant: ThemeVariant;
+  device_model: string | null;
+  system_version: string | null;
+  app_version: string | null;
+  lang_code: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -38,6 +42,10 @@ export interface SettingsUpdate {
   theme_mode?: ThemeMode;
   theme_palette?: ThemePalette;
   theme_variant?: ThemeVariant;
+  device_model?: string | null;
+  system_version?: string | null;
+  app_version?: string | null;
+  lang_code?: string | null;
 }
 
 export interface BanWarningPattern {
@@ -63,6 +71,7 @@ export interface Account {
   api_hash_override: string | null;
   join_max_attempts_override: number | null;
   join_cooldown_seconds_override: number | null;
+  proxy_url: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -136,6 +145,7 @@ export interface AccountUpdate {
   api_hash_override?: string | null;
   join_max_attempts_override?: number | null;
   join_cooldown_seconds_override?: number | null;
+  proxy_url?: string | null;
 }
 
 export interface GroupSlot {

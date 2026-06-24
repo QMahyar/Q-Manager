@@ -59,8 +59,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, ubuntu-latest]
-    
+        platform: [windows-latest, ubuntu-latest, macos-latest]
+
     runs-on: ${{ matrix.platform }}
     
     steps:
@@ -107,7 +107,7 @@ jobs:
       - name: Install Telethon dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install telethon pyinstaller cryptg
+          pip install telethon pyinstaller cryptg python-socks
       
       - name: Build Telethon worker (Windows)
         if: matrix.platform == 'windows-latest'
@@ -115,15 +115,15 @@ jobs:
           cd telethon-worker
           powershell -ExecutionPolicy Bypass -File build-telethon.ps1 -Output dist -Clean
       
-      - name: Build Telethon worker (Linux)
-        if: matrix.platform == 'ubuntu-latest'
+      - name: Build Telethon worker (Linux / macOS)
+        if: runner.os != 'Windows'
         run: |
           cd telethon-worker
           chmod +x build-telethon.sh
           ./build-telethon.sh --output dist --clean
-      
-      - name: Verify Telethon worker build (Linux)
-        if: matrix.platform == 'ubuntu-latest'
+
+      - name: Verify Telethon worker build (Linux / macOS)
+        if: runner.os != 'Windows'
         run: ls -lh telethon-worker/dist/
       
       - name: Verify Telethon worker build (Windows)
@@ -142,8 +142,8 @@ jobs:
           $config.bundle.resources = @("../telethon-worker/dist/telethon-worker.exe")
           $config | ConvertTo-Json -Depth 20 | Set-Content $configPath
 
-      - name: Configure bundle resources (Linux)
-        if: matrix.platform == 'ubuntu-latest'
+      - name: Configure bundle resources (Linux / macOS)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           python - <<'PY'
@@ -205,4 +205,127 @@ jobs:
             src-tauri/target/release/build/*/output
             src-tauri/target/release/*.log
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Headless "browser app" server binaries.
+  # A single self-contained binary (webview-free, so it builds for ARM/Termux):
+  # run it, then open the printed http://localhost link in any browser, on any
+  # device on your LAN. Built with --no-default-features --features server.
+  # ---------------------------------------------------------------------------
+  build-server:
+    name: Build Server Binary (${{ matrix.name }})
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+          - name: windows-x86_64
+            os: windows-latest
+          - name: macos-x86_64
+            os: macos-13
+          - name: macos-aarch64
+            os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: server-${{ matrix.name }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            server-${{ matrix.name }}-cargo-
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Note: no GTK/WebKit system deps — the server build has no webview.
+      - name: Build Telethon worker (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd telethon-worker
+          powershell -ExecutionPolicy Bypass -File build-telethon.ps1 -Output dist -Clean
+
+      - name: Build Telethon worker (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd telethon-worker
+          chmod +x build-telethon.sh
+          ./build-telethon.sh --output dist --clean
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend (embedded into the server binary)
+        run: npm run build
+
+      - name: Build server binary
+        run: cargo build --release --locked --no-default-features --features server --manifest-path src-tauri/Cargo.toml
+
+      - name: Package (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          version="${GITHUB_REF#refs/tags/v}"
+          pkg="q-manager-${version}-server-${{ matrix.name }}"
+          mkdir -p "$pkg"
+          cp src-tauri/target/release/q-manager "$pkg/q-manager"
+          cp telethon-worker/dist/telethon-worker "$pkg/telethon-worker"
+          chmod +x "$pkg/q-manager" "$pkg/telethon-worker"
+          cat > "$pkg/README.txt" <<EOF
+          Q Manager — headless (browser) edition.
+          Run:   ./q-manager serve
+          Then open the printed http://localhost:8787 link in your browser.
+          For other devices on your network, use the Network URL it prints.
+          Keep q-manager and telethon-worker in the same folder.
+          EOF
+          tar -czf "${pkg}.tar.gz" "$pkg"
+          gh release upload "${GITHUB_REF_NAME}" "${pkg}.tar.gz" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
+          $pkg = "q-manager-$version-server-${{ matrix.name }}"
+          New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+          Copy-Item src-tauri/target/release/q-manager.exe "$pkg/q-manager.exe"
+          Copy-Item telethon-worker/dist/telethon-worker.exe "$pkg/telethon-worker.exe"
+          @"
+          Q Manager - headless (browser) edition.
+          Run:   q-manager.exe serve
+          Then open the printed http://localhost:8787 link in your browser.
+          For other devices on your network, use the Network URL it prints.
+          Keep q-manager.exe and telethon-worker.exe in the same folder.
+          "@ | Set-Content "$pkg/README.txt"
+          Compress-Archive -Path $pkg -DestinationPath "$pkg.zip" -Force
+          gh release upload $env:GITHUB_REF_NAME "$pkg.zip" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

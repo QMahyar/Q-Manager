@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
-use tauri::command;
 use tokio::sync::Mutex;
 
 static LOGIN_SESSIONS: Lazy<Mutex<HashMap<String, TelethonLoginSession>>> =
@@ -70,14 +69,14 @@ fn get_sessions_dir() -> PathBuf {
 }
 
 /// Check if Telethon worker is available
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn login_check_telethon() -> CommandResult<bool> {
     telethon::assert_worker_exists()?;
     Ok(true)
 }
 
 /// Start a new login session
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn login_start(
     api_id: Option<i64>,
     api_hash: Option<String>,
@@ -115,7 +114,22 @@ pub async fn login_start(
         .join("telethon.session")
         .to_string_lossy()
         .to_string();
-    let client = match telethon::TelethonClient::spawn(api_id, &api_hash, &session_path) {
+
+    // Apply the global device identity so the account registers with the spoofed
+    // device from its first authorization (no proxy at login — see with_config).
+    let login_conn = {
+        let conn = db::get_conn().map_err(error_response)?;
+        let settings = db::get_settings(&conn).map_err(error_response)?;
+        telethon::ConnectionConfig::from_parts(
+            settings.device_model,
+            settings.system_version,
+            settings.app_version,
+            settings.lang_code,
+            None,
+        )
+    };
+
+    let client = match telethon::TelethonClient::spawn_with_config(api_id, &api_hash, &session_path, &login_conn) {
         Ok(c) => c,
         Err(e) => {
             // Clean up the temp directory on spawn failure
@@ -144,7 +158,7 @@ pub async fn login_start(
     let mut sessions = LOGIN_SESSIONS.lock().await;
     sessions.insert(
         token.clone(),
-        TelethonLoginSession::new(api_id, api_hash, session_dir).map_err(error_response)?,
+        TelethonLoginSession::with_config(api_id, api_hash, session_dir, &login_conn).map_err(error_response)?,
     );
     emit_login_progress(&token, "ready", "Ready for phone number", 100);
 
@@ -158,7 +172,7 @@ pub struct LoginStartResult {
 }
 
 /// Get current login state
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn login_get_state(token: String) -> CommandResult<AuthState> {
     let mut sessions = LOGIN_SESSIONS.lock().await;
     let session = sessions
@@ -168,7 +182,7 @@ pub async fn login_get_state(token: String) -> CommandResult<AuthState> {
 }
 
 /// Send phone number
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn login_send_phone(token: String, phone: String) -> CommandResult<AuthState> {
     // Validate phone number
     validate_phone_number(&phone).map_err(error_response)?;
@@ -198,7 +212,7 @@ pub async fn login_send_phone(token: String, phone: String) -> CommandResult<Aut
 }
 
 /// Send verification code
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn login_send_code(token: String, code: String) -> CommandResult<AuthState> {
     check_rate_limit(&token)?;
     emit_login_progress(&token, "code", "Verifying code...", 50);
@@ -225,7 +239,7 @@ pub async fn login_send_code(token: String, code: String) -> CommandResult<AuthS
 }
 
 /// Send 2FA password
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn login_send_password(token: String, password: String) -> CommandResult<AuthState> {
     check_rate_limit(&token)?;
     emit_login_progress(&token, "password", "Verifying 2FA password...", 50);
@@ -252,7 +266,7 @@ pub async fn login_send_password(token: String, password: String) -> CommandResu
 }
 
 /// Complete login and create account
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn login_complete(
     token: String,
     account_name: String,
@@ -366,7 +380,7 @@ pub async fn login_complete(
 }
 
 /// Cancel login and cleanup
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn login_cancel(token: String) -> CommandResult<()> {
     let mut sessions = LOGIN_SESSIONS.lock().await;
 

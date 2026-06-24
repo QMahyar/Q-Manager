@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
-use tauri::command;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
@@ -119,7 +118,7 @@ pub struct PatternImportResult {
 }
 
 /// Preflight import to detect duplicate account names.
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_import_preflight(
     candidates: Vec<ImportCandidate>,
 ) -> CommandResult<ImportPreflight> {
@@ -157,7 +156,7 @@ pub fn account_import_preflight(
 }
 
 /// Import Telethon sessions from a directory or ZIP file with duplicate resolution.
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_import_resolve(
     resolutions: Vec<ImportResolution>,
 ) -> CommandResult<Vec<ImportResult>> {
@@ -218,7 +217,7 @@ fn replace_existing_account(account_id: i64) -> CommandResult<()> {
     // Stop the worker if running — block_on is safe here because
     // account_import_resolve is a sync command running on a thread-pool thread,
     // not inside an existing Tokio runtime context.
-    let _ = tauri::async_runtime::block_on(WORKER_MANAGER.stop_account(account_id));
+    let _ = futures::executor::block_on(WORKER_MANAGER.stop_account(account_id));
 
     // Get the user_id before deleting the account (needed for session folder path)
     let user_id: Option<i64> = {
@@ -632,7 +631,7 @@ pub enum ExportFormat {
 }
 
 /// Export an account's session
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_export(
     account_id: i64,
     dest_path: String,
@@ -733,7 +732,7 @@ fn export_single_account(
 }
 
 /// Add a directory recursively to a ZIP archive
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn accounts_export(
     account_ids: Vec<i64>,
     dest_path: String,
@@ -1038,7 +1037,7 @@ fn action_exists(conn: &rusqlite::Connection, action_id: i64) -> CommandResult<b
     Ok(exists)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phase_patterns_export(path: String) -> CommandResult<PatternExport> {
     let conn = db::get_conn().map_err(error_response)?;
     let phase_patterns = db::list_all_phase_patterns(&conn).map_err(error_response)?;
@@ -1070,7 +1069,7 @@ pub fn phase_patterns_export(path: String) -> CommandResult<PatternExport> {
     Ok(export)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_patterns_export(path: String) -> CommandResult<PatternExport> {
     let conn = db::get_conn().map_err(error_response)?;
     let action_patterns = db::list_all_action_patterns(&conn).map_err(error_response)?;
@@ -1103,7 +1102,7 @@ pub fn action_patterns_export(path: String) -> CommandResult<PatternExport> {
     Ok(export)
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn phase_patterns_import(path: String) -> CommandResult<PatternImportResult> {
     let raw = fs::read_to_string(&path).map_err(error_response)?;
     let payload: PatternExport = serde_json::from_str(&raw).map_err(error_response)?;
@@ -1188,7 +1187,7 @@ fn phase_patterns_import_inner(
     })
 }
 
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn action_patterns_import(path: String) -> CommandResult<PatternImportResult> {
     let raw = fs::read_to_string(&path).map_err(error_response)?;
     let payload: PatternExport = serde_json::from_str(&raw).map_err(error_response)?;
@@ -1275,7 +1274,7 @@ fn action_patterns_import_inner(
 }
 
 /// Get the path to an account's session directory (for file picker default)
-#[command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub fn account_session_path(account_id: i64) -> CommandResult<Option<String>> {
     let conn = db::get_conn().map_err(error_response)?;
     let user_id: Option<i64> = conn

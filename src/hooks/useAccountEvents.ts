@@ -1,6 +1,6 @@
 // Hook for listening to real-time account events from the backend
 import { useEffect, useRef } from "react";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@/lib/transport";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { startAccount, stopAccount, startAllAccounts, stopAllAccounts } from "@/lib/api";

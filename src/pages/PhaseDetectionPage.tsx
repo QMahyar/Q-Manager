@@ -45,7 +45,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhasePatternDialogs } from "@/components/phases/PhasePatternDialogs";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@/lib/transport";
 import {
   listPhases,
   listPhasePatterns,

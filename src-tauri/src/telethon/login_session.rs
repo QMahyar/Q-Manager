@@ -42,11 +42,29 @@ impl TelethonLoginSession {
         api_hash: String,
         session_dir: std::path::PathBuf,
     ) -> Result<Self, String> {
+        Self::with_config(
+            api_id,
+            api_hash,
+            session_dir,
+            &crate::telethon::ConnectionConfig::default(),
+        )
+    }
+
+    /// Like [`Self::new`] but applies a connection identity so the account
+    /// registers with the spoofed device from its very first authorization.
+    /// (Proxy is intentionally not applied during login — the account doesn't
+    /// exist yet; proxy is configured per-account afterward.)
+    pub fn with_config(
+        api_id: i64,
+        api_hash: String,
+        session_dir: std::path::PathBuf,
+        config: &crate::telethon::ConnectionConfig,
+    ) -> Result<Self, String> {
         let session_path = session_dir
             .join("telethon.session")
             .to_string_lossy()
             .to_string();
-        let client = TelethonClient::spawn(api_id, &api_hash, &session_path)?;
+        let client = TelethonClient::spawn_with_config(api_id, &api_hash, &session_path, config)?;
         let state = AuthState::WaitingPhoneNumber;
         Ok(Self {
             api_id,
