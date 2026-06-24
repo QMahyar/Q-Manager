@@ -40,7 +40,14 @@ fi
 
 python3 -m pip install --upgrade pip --break-system-packages >/dev/null 2>&1 || true
 # python-socks is required for SOCKS5/SOCKS4/HTTP proxy support.
-python3 -m pip install telethon pyinstaller cryptg python-socks --break-system-packages >/dev/null 2>&1 || python3 -m pip install --user telethon pyinstaller cryptg python-socks >/dev/null
+# cryptg is an optional native speedup; it has no universal2 wheel, so a
+# cross-arch (PYINSTALLER_TARGET_ARCH) build omits it and Telethon falls back to
+# its pure-Python crypto. All other deps are pure Python.
+PKGS="telethon pyinstaller python-socks"
+if [ -z "${PYINSTALLER_TARGET_ARCH:-}" ]; then
+  PKGS="$PKGS cryptg"
+fi
+python3 -m pip install $PKGS --break-system-packages >/dev/null 2>&1 || python3 -m pip install --user $PKGS >/dev/null
 
 DIST_DIR="$OUTPUT_DIR"
 if [ -z "$DIST_DIR" ]; then
