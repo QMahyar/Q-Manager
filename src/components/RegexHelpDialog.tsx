@@ -5,25 +5,29 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { IconInfoCircle } from "@tabler/icons-react";
 
 interface RegexHelpDialogProps {
-  trigger?: React.ReactNode;
+  trigger?: React.ReactElement;
   title?: string;
 }
 
 export function RegexHelpDialog({ trigger, title = "Regex Help" }: RegexHelpDialogProps) {
   return (
     <Dialog>
-      {trigger ? (
-        <DialogTrigger>
-          {trigger}
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger>
-          <Button variant="ghost" size="sm" className="gap-1" aria-label="Regex help">
-            <IconInfoCircle className="size-4" />
-            Regex Help
-          </Button>
-        </DialogTrigger>
-      )}
+      {/*
+        Render the trigger via base-ui's `render` prop instead of as children.
+        DialogTrigger renders a native <button>; passing a <Button> as a child
+        nests <button> inside <button> (invalid HTML that misbehaves in WebView2).
+        `render` merges the trigger props onto the provided element instead.
+      */}
+      <DialogTrigger
+        render={
+          trigger ?? (
+            <Button variant="ghost" size="sm" className="gap-1" aria-label="Regex help">
+              <IconInfoCircle className="size-4" />
+              Regex Help
+            </Button>
+          )
+        }
+      />
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -279,39 +278,33 @@ export function ActivityFeed({
               </p>
             </div>
           ) : (
-            <AnimatePresence initial={false}>
-              <div className="divide-y divide-border/30">
-                {filteredActivities.map((activity) => (
-                  <motion.div
-                    key={activity.id}
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="flex items-start gap-2.5 px-4 py-2 hover:bg-muted/20 transition-colors"
-                  >
-                    {/* Type dot */}
-                    <span className={`mt-1.5 size-1.5 rounded-full shrink-0 ${typeDots[activity.type]}`} />
+            <div className="divide-y divide-border/30">
+              {filteredActivities.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-2.5 px-4 py-2 hover:bg-muted/20 transition-colors"
+                >
+                  {/* Type dot */}
+                  <span className={`mt-1.5 size-1.5 rounded-full shrink-0 ${typeDots[activity.type]}`} />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="text-xs font-medium text-foreground/90 truncate leading-snug">
-                          {activity.title}
-                        </p>
-                        <span className="text-[10px] text-muted-foreground/40 whitespace-nowrap font-mono shrink-0">
-                          {formatTime(activity.timestamp)}
-                        </span>
-                      </div>
-                      {activity.description && (
-                        <p className="text-[11px] text-muted-foreground/60 truncate leading-snug mt-px">
-                          {activity.description}
-                        </p>
-                      )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="text-xs font-medium text-foreground/90 truncate leading-snug">
+                        {activity.title}
+                      </p>
+                      <span className="text-[10px] text-muted-foreground/40 whitespace-nowrap font-mono shrink-0">
+                        {formatTime(activity.timestamp)}
+                      </span>
                     </div>
-                  </motion.div>
-                ))}
-              </div>
-            </AnimatePresence>
+                    {activity.description && (
+                      <p className="text-[11px] text-muted-foreground/60 truncate leading-snug mt-px">
+                        {activity.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </ScrollArea>
       </CardContent>

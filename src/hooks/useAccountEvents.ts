@@ -92,6 +92,17 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
 
+    // Tauri's UnlistenFn returns a promise (it invokes `plugin:event|unlisten`).
+    // If that invoke ever rejects during teardown, the floating promise becomes
+    // an unhandled rejection. Swallow it — failing to unlisten is not actionable.
+    const safeUnlisten = (unlisten: UnlistenFn) => {
+      try {
+        void Promise.resolve(unlisten()).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    };
+
     const setupListeners = async () => {
       // Account status changes - with debouncing
       const unlistenStatus = await listen<AccountStatusEvent>(
@@ -281,7 +292,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       .then(() => {
         // If cleanup ran before listeners were set up, unlisten immediately
         if (isCancelled) {
-          unlisteners.forEach((unlisten) => unlisten());
+          unlisteners.forEach(safeUnlisten);
         }
       })
       .catch((err) => {
@@ -298,7 +309,7 @@ export function useAccountEvents(handlers?: AccountEventHandlers) {
       if (queryInvalidateRef.current) {
         clearTimeout(queryInvalidateRef.current);
       }
-      unlisteners.forEach((unlisten) => unlisten());
+      unlisteners.forEach(safeUnlisten);
     };
   }, [queryClient]); // Removed handlers from deps - using ref instead
 }

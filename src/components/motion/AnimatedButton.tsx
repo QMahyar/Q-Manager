@@ -1,17 +1,17 @@
 /**
- * Animated button with responsive spring micro-interactions
+ * Thin wrapper around Button. Press feedback is handled by Button's own CSS
+ * `active:scale` state, so no JS animation is needed here.
  */
-import { motion } from "motion/react";
-import { Button } from "@/components/ui/button";
 import { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 interface AnimatedButtonProps {
   children: ReactNode;
-  /** Scale factor on hover (default: 1.03) */
+  /** Accepted for API compatibility; no longer used. */
   hoverScale?: number;
-  /** Scale factor on tap (default: 0.96) */
+  /** Accepted for API compatibility; no longer used. */
   tapScale?: number;
-  /** Disable animations */
+  /** Accepted for API compatibility; no longer used. */
   noAnimation?: boolean;
   className?: string;
   variant?: "default" | "outline" | "secondary" | "ghost" | "destructive" | "link";
@@ -20,18 +20,7 @@ interface AnimatedButtonProps {
   onClick?: () => void;
 }
 
-// Tight, snappy spring — feels like a real physical button
-const springConfig = {
-  type: "spring" as const,
-  stiffness: 500,
-  damping: 22,
-  mass: 0.5,
-};
-
 export function AnimatedButton({
-  hoverScale = 1.03,
-  tapScale = 0.96,
-  noAnimation = false,
   children,
   className,
   variant,
@@ -39,24 +28,15 @@ export function AnimatedButton({
   disabled,
   onClick,
 }: AnimatedButtonProps) {
-  if (noAnimation || disabled) {
-    return (
-      <Button className={className} variant={variant} size={size} disabled={disabled} onClick={onClick}>
-        {children}
-      </Button>
-    );
-  }
-
   return (
-    <motion.div
-      whileHover={{ scale: hoverScale, transition: { ...springConfig, stiffness: 600 } }}
-      whileTap={{ scale: tapScale, transition: springConfig }}
-      transition={springConfig}
-      style={{ willChange: "transform", display: "inline-block" }}
+    <Button
+      className={className}
+      variant={variant}
+      size={size}
+      disabled={disabled}
+      onClick={onClick}
     >
-      <Button className={className} variant={variant} size={size} disabled={disabled} onClick={onClick}>
-        {children}
-      </Button>
-    </motion.div>
+      {children}
+    </Button>
   );
 }

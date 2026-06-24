@@ -4,6 +4,13 @@ import { Input as InputPrimitive } from "@base-ui/react/input"
 import { cn } from "@/lib/utils"
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  // Keep controlled inputs controlled. base-ui's Input (and React) warn loudly
+  // when a `value` prop flips from a string to undefined/null mid-life, which
+  // happens when parent state momentarily resolves to undefined. Only coerce
+  // when a `value` key is actually present so uncontrolled inputs stay uncontrolled.
+  if ("value" in props && props.value == null) {
+    props = { ...props, value: "" };
+  }
   return (
     <InputPrimitive
       type={type}

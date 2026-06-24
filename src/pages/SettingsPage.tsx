@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { PageTransition } from "@/components/motion/PageTransition";
-import { motion, AnimatePresence } from "motion/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import {
   IconDeviceFloppy,
@@ -28,7 +27,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 
 // Motion-enhanced Card
-const MotionCard = motion.create(Card);
+// Plain stand-in for the former motion.create(Card): accepts and ignores the
+// motion animation props that call sites still pass, forwarding the rest.
+function MotionCard({ initial, animate, exit, transition, ...props }: any) {
+  void initial;
+  void animate;
+  void exit;
+  void transition;
+  return <Card {...props} />;
+}
 import { toast } from "@/components/ui/sonner";
 import { useSettingsData, useDelayDefaults, useDelayDefaultMutation, parseBanPatterns, useDiagnosticsSnapshot } from "@/hooks/useSettingsData";
 import type { SettingsUpdate, BanWarningPattern, ThemeMode, ThemePalette, ThemeVariant } from "@/lib/types";
@@ -919,29 +926,17 @@ export default function SettingsPage() {
           </CardContent>
         </MotionCard>
 
-        {/* Save reminder — animated floating pill */}
-        <AnimatePresence>
-          {hasChanges && (
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 16, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 420, damping: 28 }}
-              className="fixed bottom-6 right-6 z-50 bg-background/95 border border-amber-500/30 shadow-2xl shadow-amber-500/10 rounded-xl px-4 py-3 flex items-center gap-3 backdrop-blur-md"
-            >
-              <motion.div
-                className="size-2 rounded-full bg-amber-500"
-                animate={{ scale: [1, 1.4, 1], opacity: [1, 0.6, 1] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <span className="text-sm font-medium text-foreground">Unsaved changes</span>
-              <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} className="h-7 text-xs">
-                <IconDeviceFloppy className="size-3.5 mr-1.5" />
-                {saveMutation.isPending ? "Saving..." : "Save Now"}
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Save reminder — floating pill */}
+        {hasChanges && (
+          <div className="fixed bottom-6 right-6 z-50 bg-background/95 border border-amber-500/30 shadow-2xl shadow-amber-500/10 rounded-xl px-4 py-3 flex items-center gap-3 backdrop-blur-md animate-page-fade">
+            <span className="size-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="text-sm font-medium text-foreground">Unsaved changes</span>
+            <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending} className="h-7 text-xs">
+              <IconDeviceFloppy className="size-3.5 mr-1.5" />
+              {saveMutation.isPending ? "Saving..." : "Save Now"}
+            </Button>
+          </div>
+        )}
       </main>
     </PageTransition>
   );

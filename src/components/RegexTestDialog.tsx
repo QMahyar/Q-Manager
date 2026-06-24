@@ -20,7 +20,7 @@ interface RegexTestDialogProps {
   isRegex: boolean;
   onPatternChange?: (pattern: string) => void;
   onIsRegexChange?: (isRegex: boolean) => void;
-  trigger?: React.ReactNode;
+  trigger?: React.ReactElement;
 }
 
 interface MatchResult {
@@ -137,9 +137,7 @@ export function RegexTestDialog({
     setOpen(false);
   };
 
-  const triggerElement = trigger ? (
-    trigger
-  ) : (
+  const triggerElement = trigger ?? (
     <Button variant="outline" size="icon-sm" title="Test pattern">
       <IconFlask className="size-4" />
     </Button>
@@ -147,7 +145,11 @@ export function RegexTestDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogTrigger>{triggerElement}</DialogTrigger>
+      {/*
+        Use base-ui's `render` prop so the trigger Button isn't nested inside the
+        DialogTrigger's own <button> (invalid <button> in <button> DOM).
+      */}
+      <DialogTrigger render={triggerElement} />
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Test Pattern</DialogTitle>

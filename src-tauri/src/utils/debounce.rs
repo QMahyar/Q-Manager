@@ -44,10 +44,14 @@ impl<K: std::hash::Hash + Eq + Clone> Debouncer<K> {
     /// Check if the operation should be executed for the given key.
     /// Returns true if enough time has passed since last execution.
     /// Automatically updates the last execution time if returning true.
+    ///
+    /// Lock acquisition recovers from poisoning (`into_inner`) rather than
+    /// panicking: the map only holds `Instant`s, so a panic elsewhere can't
+    /// leave it in a logically corrupt state. Recovering keeps a single stray
+    /// panic from cascading into a crash on every subsequent message during
+    /// gameplay (this runs on the hot path for `last_seen_at` throttling).
     pub fn should_execute(&self, key: &K) -> bool {
-        let mut map = self.last_execution.lock().expect(
-            "Debouncer mutex poisoned - this indicates a panic occurred while holding the lock",
-        );
+        let mut map = self.last_execution.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let now = Instant::now();
 
         if let Some(last) = map.get(key) {
@@ -63,9 +67,7 @@ impl<K: std::hash::Hash + Eq + Clone> Debouncer<K> {
     /// Check if the operation should be executed without updating state.
     /// Use this when you need to check but may not actually execute.
     pub fn check_only(&self, key: &K) -> bool {
-        let map = self.last_execution.lock().expect(
-            "Debouncer mutex poisoned - this indicates a panic occurred while holding the lock",
-        );
+        let map = self.last_execution.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let now = Instant::now();
 
         if let Some(last) = map.get(key) {
@@ -78,25 +80,19 @@ impl<K: std::hash::Hash + Eq + Clone> Debouncer<K> {
     /// Mark that an operation was executed for the given key.
     /// Use this when you used check_only() and then decided to execute.
     pub fn mark_executed(&self, key: &K) {
-        let mut map = self.last_execution.lock().expect(
-            "Debouncer mutex poisoned - this indicates a panic occurred while holding the lock",
-        );
+        let mut map = self.last_execution.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         map.insert(key.clone(), Instant::now());
     }
 
     /// Force reset the debounce timer for a key (allows immediate execution)
     pub fn reset(&self, key: &K) {
-        let mut map = self.last_execution.lock().expect(
-            "Debouncer mutex poisoned - this indicates a panic occurred while holding the lock",
-        );
+        let mut map = self.last_execution.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         map.remove(key);
     }
 
     /// Clear all tracked keys
     pub fn clear(&self) {
-        let mut map = self.last_execution.lock().expect(
-            "Debouncer mutex poisoned - this indicates a panic occurred while holding the lock",
-        );
+        let mut map = self.last_execution.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         map.clear();
     }
 
@@ -104,9 +100,7 @@ impl<K: std::hash::Hash + Eq + Clone> Debouncer<K> {
     pub fn len(&self) -> usize {
         self.last_execution
             .lock()
-            .expect(
-                "Debouncer mutex poisoned - this indicates a panic occurred while holding the lock",
-            )
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .len()
     }
 
@@ -114,9 +108,7 @@ impl<K: std::hash::Hash + Eq + Clone> Debouncer<K> {
     pub fn is_empty(&self) -> bool {
         self.last_execution
             .lock()
-            .expect(
-                "Debouncer mutex poisoned - this indicates a panic occurred while holding the lock",
-            )
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .is_empty()
     }
 }
@@ -143,7 +135,7 @@ impl<K: std::hash::Hash + Eq + Clone, V> BatchDebouncer<K, V> {
         let mut pending = self
             .pending
             .lock()
-            .expect("BatchDebouncer pending mutex poisoned");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         pending.insert(key, value);
     }
 
@@ -155,7 +147,7 @@ impl<K: std::hash::Hash + Eq + Clone, V> BatchDebouncer<K, V> {
             let last = self
                 .last_flush
                 .lock()
-                .expect("BatchDebouncer last_flush mutex poisoned");
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             if now.duration_since(*last) < self.flush_interval {
                 return None;
             }
@@ -165,11 +157,11 @@ impl<K: std::hash::Hash + Eq + Clone, V> BatchDebouncer<K, V> {
         let mut pending = self
             .pending
             .lock()
-            .expect("BatchDebouncer pending mutex poisoned");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut last = self
             .last_flush
             .lock()
-            .expect("BatchDebouncer last_flush mutex poisoned");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         if pending.is_empty() {
             *last = now;
@@ -186,11 +178,11 @@ impl<K: std::hash::Hash + Eq + Clone, V> BatchDebouncer<K, V> {
         let mut pending = self
             .pending
             .lock()
-            .expect("BatchDebouncer pending mutex poisoned");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut last = self
             .last_flush
             .lock()
-            .expect("BatchDebouncer last_flush mutex poisoned");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *last = Instant::now();
         std::mem::take(&mut *pending)
     }
@@ -199,7 +191,7 @@ impl<K: std::hash::Hash + Eq + Clone, V> BatchDebouncer<K, V> {
     pub fn pending_count(&self) -> usize {
         self.pending
             .lock()
-            .expect("BatchDebouncer pending mutex poisoned")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .len()
     }
 }

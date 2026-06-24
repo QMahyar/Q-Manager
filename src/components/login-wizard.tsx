@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   IconPhone,
   IconKey,
@@ -51,6 +51,11 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
   
   // Session state
   const [token, setToken] = useState<string | null>(null);
+
+  // Tracks the post-success redirect timer so it can be cleared if the dialog
+  // unmounts before it fires (otherwise it calls onSuccess/onOpenChange on an
+  // unmounted component).
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Form inputs
   const [phone, setPhone] = useState("");
@@ -85,6 +90,13 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Clear the post-success redirect timer if the dialog unmounts first
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -308,12 +320,11 @@ export function LoginWizard({ open, onOpenChange, onSuccess }: LoginWizardProps)
         apiHashOverride || null
       );
       setStep("success");
-      const successTimer = setTimeout(() => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
         onSuccess();
         onOpenChange(false);
       }, 1500);
-      // Clean up timer if component unmounts before it fires
-      return () => clearTimeout(successTimer);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
       setStep("error");

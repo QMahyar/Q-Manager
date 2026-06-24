@@ -72,26 +72,31 @@ pub fn setup_tray_wry(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::e
     // Build initial menu
     let menu = build_tray_menu(app)?;
 
-    // Load icon - use the app's path resolver to find the icon
-    let icon_path = app
-        .path()
-        .resolve("icons/icon.png", tauri::path::BaseDirectory::Resource)?;
-    log::info!("Loading tray icon from: {:?}", icon_path);
-
-    // Read the icon file and create an Image
-    let icon_bytes = std::fs::read(&icon_path).map_err(|e| {
-        log::error!("Failed to read tray icon from {:?}: {}", icon_path, e);
-        e
-    })?;
-
-    let icon = image::load_from_memory(&icon_bytes).map_err(|e| {
-        log::error!("Failed to decode tray icon: {}", e);
-        e
-    })?;
-
-    let (width, height) = icon.dimensions();
-    let rgba = icon.to_rgba8().into_raw();
-    let tauri_icon = tauri::image::Image::new_owned(rgba, width, height);
+    // Use the icon embedded in the binary at build time (from tauri.conf.json's
+    // bundle `icon` list). This works identically in dev and release with no
+    // filesystem dependency — reading "icons/icon.png" from the Resource dir
+    // fails in dev because resources aren't staged next to the dev binary, which
+    // left the app with no system tray.
+    let tauri_icon = match app.default_window_icon().cloned() {
+        Some(icon) => icon,
+        None => {
+            // Fallback: decode a bundled PNG resource if no window icon is embedded.
+            let icon_path = app
+                .path()
+                .resolve("icons/icon.png", tauri::path::BaseDirectory::Resource)?;
+            log::info!("Loading tray icon from: {:?}", icon_path);
+            let icon_bytes = std::fs::read(&icon_path).map_err(|e| {
+                log::error!("Failed to read tray icon from {:?}: {}", icon_path, e);
+                e
+            })?;
+            let icon = image::load_from_memory(&icon_bytes).map_err(|e| {
+                log::error!("Failed to decode tray icon: {}", e);
+                e
+            })?;
+            let (width, height) = icon.dimensions();
+            tauri::image::Image::new_owned(icon.to_rgba8().into_raw(), width, height)
+        }
+    };
 
     // Create tray icon
     let tray = TrayIconBuilder::new()

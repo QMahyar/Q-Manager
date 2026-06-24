@@ -3,6 +3,10 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+  // Keep a controlled textarea controlled if its value momentarily goes nullish.
+  if ("value" in props && props.value == null) {
+    props = { ...props, value: "" };
+  }
   return (
     <textarea
       data-slot="textarea"

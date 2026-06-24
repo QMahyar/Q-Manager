@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { PageTransition } from "@/components/motion/PageTransition";
-import { motion } from "motion/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -546,13 +545,7 @@ export default function ActionsPage() {
                 </CardHeader>
 
                 {expandedActionId === action.id && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                    style={{ overflow: "hidden" }}
-                  >
+                  <div>
                   <CardContent>
                     <div className="border-t pt-4 space-y-6">
                       {action.is_two_step ? (
@@ -573,7 +566,7 @@ export default function ActionsPage() {
                       )}
                     </div>
                   </CardContent>
-                  </motion.div>
+                  </div>
                 )}
               </Card>
             ))}

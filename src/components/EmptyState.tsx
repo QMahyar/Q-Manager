@@ -1,5 +1,4 @@
 import { ReactNode } from "react";
-import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import {
   IconUsers,
@@ -33,49 +32,23 @@ export function EmptyState({
   className = "",
 }: EmptyStateProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 360, damping: 28, mass: 0.7 }}
+    <div
       className={`flex flex-col items-center justify-center py-16 px-4 text-center ${className}`}
     >
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 400, damping: 22, delay: 0.06 }}
-        className="rounded-2xl bg-muted/60 border border-border/60 p-5 mb-5 shadow-sm"
-      >
+      <div className="rounded-2xl bg-muted/60 border border-border/60 p-5 mb-5 shadow-sm">
         {icon || <IconInbox className="h-8 w-8 text-muted-foreground" />}
-      </motion.div>
-      <motion.h3
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.25, ease: "easeOut" }}
-        className="text-base font-semibold text-foreground mb-1.5"
-      >
-        {title}
-      </motion.h3>
-      <motion.p
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.14, duration: 0.25, ease: "easeOut" }}
-        className="text-muted-foreground text-sm max-w-sm mb-5 leading-relaxed text-pretty"
-      >
+      </div>
+      <h3 className="text-base font-semibold text-foreground mb-1.5">{title}</h3>
+      <p className="text-muted-foreground text-sm max-w-sm mb-5 leading-relaxed text-pretty">
         {description}
-      </motion.p>
+      </p>
       {action && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", stiffness: 400, damping: 22, delay: 0.18 }}
-        >
-          <Button onClick={action.onClick} size="sm">
-            <IconPlus className="size-4 mr-1.5" />
-            {action.label}
-          </Button>
-        </motion.div>
+        <Button onClick={action.onClick} size="sm">
+          <IconPlus className="size-4 mr-1.5" />
+          {action.label}
+        </Button>
       )}
-    </motion.div>
+    </div>
   );
 }
 

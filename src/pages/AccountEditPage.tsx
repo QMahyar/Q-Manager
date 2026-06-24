@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { useParams } from "react-router-dom";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion } from "motion/react";
 import {
   IconDeviceFloppy,
   IconRefresh,
@@ -23,8 +22,15 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnimatedBadge } from "@/components/motion";
 
-// Motion-enhanced Card
-const MotionCard = motion.create(Card);
+// Plain stand-in for the former motion.create(Card): accepts and ignores the
+// motion animation props that call sites still pass, forwarding the rest.
+function MotionCard({ initial, animate, exit, transition, ...props }: any) {
+  void initial;
+  void animate;
+  void exit;
+  void transition;
+  return <Card {...props} />;
+}
 import {
   Dialog,
   DialogContent,

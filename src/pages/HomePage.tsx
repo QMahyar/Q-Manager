@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "motion/react";
 import {
 	IconUsers,
 	IconListCheck,
@@ -204,25 +203,10 @@ export default function HomePage() {
 	return (
 		<div className="min-h-screen flex flex-col bg-background">
 			{/* ── Header ── */}
-			<motion.header
-				className="border-b border-border/60 bg-background/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-10"
-				initial={{ opacity: 0, y: -12 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ type: "spring", stiffness: 380, damping: 30 }}
-			>
+			<header className="border-b border-border/60 bg-background/90 backdrop-blur-md px-6 py-3 flex items-center justify-between sticky top-0 z-10">
 				{/* Branding */}
-				<motion.div
-					className="flex items-center gap-3"
-					initial={{ opacity: 0, x: -8 }}
-					animate={{ opacity: 1, x: 0 }}
-					transition={{
-						type: "spring",
-						stiffness: 380,
-						damping: 26,
-						delay: 0.06,
-					}}
-				>
-					<WolfLogo size={40} animate={true} />
+				<div className="flex items-center gap-3">
+					<WolfLogo size={40} />
 					<div>
 						<h1 className="text-lg font-bold leading-none text-foreground">
 							Q Manager
@@ -231,138 +215,91 @@ export default function HomePage() {
 							Werewolf Game Automation
 						</p>
 					</div>
-				</motion.div>
+				</div>
 
 				{/* Right: theme toggle */}
-				<motion.div
-					initial={{ opacity: 0, x: 8 }}
-					animate={{ opacity: 1, x: 0 }}
-					transition={{
-						type: "spring",
-						stiffness: 380,
-						damping: 26,
-						delay: 0.1,
-					}}
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={cycleTheme}
+					className="gap-2 h-8 px-3 text-xs font-medium border-border/70 bg-background/60 hover:bg-muted/80"
+					title={`Current: ${themeLabel} — click to cycle`}
 				>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={cycleTheme}
-						className="gap-2 h-8 px-3 text-xs font-medium border-border/70 bg-background/60 hover:bg-muted/80"
-						title={`Current: ${themeLabel} — click to cycle`}
-					>
-						<AnimatePresence mode="wait" initial={false}>
-							<motion.span
-								key={theme}
-								initial={{ opacity: 0, rotate: -20, scale: 0.75 }}
-								animate={{ opacity: 1, rotate: 0, scale: 1 }}
-								exit={{ opacity: 0, rotate: 20, scale: 0.75 }}
-								transition={{ duration: 0.15 }}
-								className="flex items-center"
-							>
-								{themeIcon}
-							</motion.span>
-						</AnimatePresence>
-						<span className="text-foreground/70">{themeLabel}</span>
-					</Button>
-				</motion.div>
-			</motion.header>
+					<span className="flex items-center">{themeIcon}</span>
+					<span className="text-foreground/70">{themeLabel}</span>
+				</Button>
+			</header>
 
 			{/* ── System error banner ── */}
-			<AnimatePresence>
-				{showSystemBanner && systemErrors.length > 0 && (
-					<motion.div
-						initial={{ opacity: 0, height: 0 }}
-						animate={{ opacity: 1, height: "auto" }}
-						exit={{ opacity: 0, height: 0 }}
-						transition={{ duration: 0.2 }}
-						className={`border-b px-6 py-3 ${
-							hasBlockingErrors
-								? "border-destructive/30 bg-destructive/8"
-								: "border-warning/25 bg-warning/8"
-						}`}
-					>
-						<div className="flex items-start justify-between gap-4 max-w-5xl mx-auto">
-							<div className="space-y-1 min-w-0">
-								<p
-									className={`font-semibold text-sm flex items-center gap-1.5 ${
-										hasBlockingErrors ? "text-destructive" : "text-warning"
-									}`}
-								>
-									{hasBlockingErrors ? (
-										<IconAlertCircle className="h-4 w-4 shrink-0" />
-									) : (
-										<IconAlertTriangle className="h-4 w-4 shrink-0" />
-									)}
-									{hasBlockingErrors
-										? "Action Required"
-										: "Configuration Recommended"}
-								</p>
-								<ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
-									{systemErrors.map((w, i) => (
-										<li key={i}>
-											{w.is_blocking && (
-												<span className="text-destructive font-medium mr-1">
-													[Blocking]
-												</span>
-											)}
-											{w.message}
-											{w.details ? ` — ${w.details}` : ""}
-										</li>
-									))}
-								</ul>
-							</div>
-							<div className="flex gap-2 shrink-0">
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => navigate("/settings")}
-								>
-									Open Settings
-								</Button>
-								<Button variant="ghost" size="sm" onClick={dismissBanner}>
-									Dismiss
-								</Button>
-							</div>
+			{showSystemBanner && systemErrors.length > 0 && (
+				<div
+					className={`border-b px-6 py-3 ${
+						hasBlockingErrors
+							? "border-destructive/30 bg-destructive/8"
+							: "border-warning/25 bg-warning/8"
+					}`}
+				>
+					<div className="flex items-start justify-between gap-4 max-w-5xl mx-auto">
+						<div className="space-y-1 min-w-0">
+							<p
+								className={`font-semibold text-sm flex items-center gap-1.5 ${
+									hasBlockingErrors ? "text-destructive" : "text-warning"
+								}`}
+							>
+								{hasBlockingErrors ? (
+									<IconAlertCircle className="h-4 w-4 shrink-0" />
+								) : (
+									<IconAlertTriangle className="h-4 w-4 shrink-0" />
+								)}
+								{hasBlockingErrors
+									? "Action Required"
+									: "Configuration Recommended"}
+							</p>
+							<ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
+								{systemErrors.map((w, i) => (
+									<li key={i}>
+										{w.is_blocking && (
+											<span className="text-destructive font-medium mr-1">
+												[Blocking]
+											</span>
+										)}
+										{w.message}
+										{w.details ? ` — ${w.details}` : ""}
+									</li>
+								))}
+							</ul>
 						</div>
-					</motion.div>
-				)}
-			</AnimatePresence>
+						<div className="flex gap-2 shrink-0">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => navigate("/settings")}
+							>
+								Open Settings
+							</Button>
+							<Button variant="ghost" size="sm" onClick={dismissBanner}>
+								Dismiss
+							</Button>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* ── Main ── */}
 			<main className="flex-1 flex flex-col items-center justify-center px-6 py-10 md:py-14">
 				<div className="w-full max-w-4xl space-y-10">
 					{/* Hero stat strip */}
-					<motion.div
-						className="grid grid-cols-3 gap-4"
-						initial={{ opacity: 0, y: 16 }}
-						animate={{ opacity: 1, y: 0 }}
-						transition={{
-							delay: 0.1,
-							type: "spring",
-							stiffness: 340,
-							damping: 28,
-						}}
-					>
+					<div className="grid grid-cols-3 gap-4">
 						{/* Running */}
-						<motion.button
+						<button
 							onClick={() => navigate("/accounts")}
-							className="group relative flex flex-col items-center justify-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/40 py-6 px-4 cursor-pointer overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/10"
-							whileHover={{ scale: 1.02, y: -2 }}
-							whileTap={{ scale: 0.97 }}
-							transition={{ type: "spring", stiffness: 500, damping: 24 }}
+							className="group relative flex flex-col items-center justify-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/40 py-6 px-4 cursor-pointer overflow-hidden transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] hover:shadow-lg hover:shadow-emerald-500/10"
 						>
 							<div className="flex items-center gap-2">
 								<span className="relative flex size-2.5">
-									<motion.span
-										className="absolute inset-0 rounded-full bg-emerald-500"
-										animate={{ scale: [1, 2.4, 1], opacity: [0.6, 0, 0.6] }}
-										transition={{
-											duration: 2.2,
-											repeat: Infinity,
-											ease: "easeInOut",
-										}}
-									/>
+									{runningCount > 0 && (
+										<span className="absolute inset-0 rounded-full bg-emerald-500 opacity-75 animate-ping" />
+									)}
 									<span className="relative size-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]" />
 								</span>
 								<span className="text-4xl font-black tabular-nums text-emerald-500">
@@ -373,15 +310,12 @@ export default function HomePage() {
 								<IconPlayerPlay className="size-3" />
 								Running
 							</div>
-						</motion.button>
+						</button>
 
 						{/* Stopped */}
-						<motion.button
+						<button
 							onClick={() => navigate("/accounts")}
-							className="group flex flex-col items-center justify-center gap-2 rounded-2xl border border-border/60 bg-muted/30 hover:bg-muted/50 hover:border-border py-6 px-4 cursor-pointer transition-all duration-200 hover:shadow-md"
-							whileHover={{ scale: 1.02, y: -2 }}
-							whileTap={{ scale: 0.97 }}
-							transition={{ type: "spring", stiffness: 500, damping: 24 }}
+							className="group flex flex-col items-center justify-center gap-2 rounded-2xl border border-border/60 bg-muted/30 hover:bg-muted/50 hover:border-border py-6 px-4 cursor-pointer transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] hover:shadow-md"
 						>
 							<div className="flex items-center gap-2">
 								<span className="size-2.5 rounded-full bg-muted-foreground/40" />
@@ -393,15 +327,12 @@ export default function HomePage() {
 								<IconPlayerStop className="size-3" />
 								Stopped
 							</div>
-						</motion.button>
+						</button>
 
 						{/* Actions */}
-						<motion.button
+						<button
 							onClick={() => navigate("/actions")}
-							className="group flex flex-col items-center justify-center gap-2 rounded-2xl border border-sky-500/20 bg-sky-500/5 hover:bg-sky-500/10 hover:border-sky-500/40 py-6 px-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-sky-500/10"
-							whileHover={{ scale: 1.02, y: -2 }}
-							whileTap={{ scale: 0.97 }}
-							transition={{ type: "spring", stiffness: 500, damping: 24 }}
+							className="group flex flex-col items-center justify-center gap-2 rounded-2xl border border-sky-500/20 bg-sky-500/5 hover:bg-sky-500/10 hover:border-sky-500/40 py-6 px-4 cursor-pointer transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] hover:shadow-lg hover:shadow-sky-500/10"
 						>
 							<div className="flex items-center gap-2">
 								<span className="size-2.5 rounded-full bg-sky-500" />
@@ -413,39 +344,16 @@ export default function HomePage() {
 								<IconBolt className="size-3" />
 								Actions
 							</div>
-						</motion.button>
-					</motion.div>
+						</button>
+					</div>
 
 					{/* Nav grid */}
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-						{navigationItems.map((item, index) => (
-							<motion.button
+						{navigationItems.map((item) => (
+							<button
 								key={item.title}
 								onClick={() => navigate(item.path)}
-								className={`group relative flex items-center gap-4 rounded-2xl border border-border/60 bg-card p-5 text-left cursor-pointer transition-all duration-200 hover:shadow-xl ${item.glow} ${item.border} overflow-hidden`}
-								initial={{ opacity: 0, y: 20, scale: 0.97 }}
-								animate={{ opacity: 1, y: 0, scale: 1 }}
-								transition={{
-									type: "spring",
-									stiffness: 360,
-									damping: 28,
-									delay: 0.15 + index * 0.055,
-								}}
-								whileHover={{
-									scale: 1.025,
-									y: -3,
-									transition: {
-										type: "spring",
-										stiffness: 520,
-										damping: 22,
-										mass: 0.4,
-									},
-								}}
-								whileTap={{
-									scale: 0.97,
-									transition: { type: "spring", stiffness: 700, damping: 30 },
-								}}
-								style={{ willChange: "transform" }}
+								className={`group relative flex items-center gap-4 rounded-2xl border border-border/60 bg-card p-5 text-left cursor-pointer transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.99] hover:shadow-xl ${item.glow} ${item.border} overflow-hidden`}
 							>
 								{/* Subtle top-left glow orb on hover */}
 								<div
@@ -480,7 +388,7 @@ export default function HomePage() {
 
 								{/* Arrow */}
 								<IconChevronRight className="size-4 shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground/70 group-hover:translate-x-0.5 transition-all duration-200" />
-							</motion.button>
+							</button>
 						))}
 					</div>
 				</div>

@@ -1,11 +1,9 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { AnimatePresence } from "motion/react";
 import { useAccountEvents } from "./hooks/useAccountEvents";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcut";
 import { PageLoader } from "./components/PageLoader";
-import { PageTransition } from "./components/motion";
 
 // Lazy load all pages for code splitting
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -42,21 +40,23 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AnimatePresence mode="wait">
-        <Suspense fallback={<PageLoader />}>
-          <PageTransition key={location.pathname}>
-            <Routes location={location}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/accounts" element={<AccountsPage />} />
-              <Route path="/accounts/:id/edit" element={<AccountEditPage />} />
-              <Route path="/phase-detection" element={<PhaseDetectionPage />} />
-              <Route path="/actions" element={<ActionsPage />} />
-              <Route path="/targets" element={<TargetsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Routes>
-          </PageTransition>
-        </Suspense>
-      </AnimatePresence>
+      {/*
+        No AnimatePresence: `mode="wait"` held the incoming page until the old
+        one finished exiting, which is what made navigation feel sluggish. Each
+        page mounts fresh on a route change and plays a single ~120ms CSS opacity
+        fade (via its own <PageTransition>), so switches are immediate.
+      */}
+      <Suspense fallback={<PageLoader />}>
+        <Routes location={location}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/accounts" element={<AccountsPage />} />
+          <Route path="/accounts/:id/edit" element={<AccountEditPage />} />
+          <Route path="/phase-detection" element={<PhaseDetectionPage />} />
+          <Route path="/actions" element={<ActionsPage />} />
+          <Route path="/targets" element={<TargetsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </Suspense>
     </div>
   );
 }

@@ -1,80 +1,32 @@
 /**
- * Geometric Wolf Logo with layered idle breathing animation
- * Clean, minimal design made of simple geometric shapes
+ * Geometric Wolf Logo — clean, minimal, static design made of simple shapes.
  */
-import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
 interface WolfLogoProps {
   size?: number;
   className?: string;
+  /** Accepted for API compatibility; the logo is now static. */
   animate?: boolean;
 }
 
-export function WolfLogo({ size = 64, className, animate = true }: WolfLogoProps) {
-  const breathe = animate
-    ? {
-        animate: { scale: [1, 1.025, 1], y: [0, -0.5, 0] },
-        transition: { duration: 3.6, repeat: Infinity, ease: "easeInOut" as const },
-      }
-    : {};
-
-  const earL = animate
-    ? {
-        animate: { y: [0, -1, 0], rotate: [-0.5, 0.5, -0.5] },
-        transition: { duration: 2.8, repeat: Infinity, ease: "easeInOut" as const, delay: 0.15 },
-      }
-    : {};
-
-  const earR = animate
-    ? {
-        animate: { y: [0, -1, 0], rotate: [0.5, -0.5, 0.5] },
-        transition: { duration: 2.8, repeat: Infinity, ease: "easeInOut" as const, delay: 0.35 },
-      }
-    : {};
-
-  // Blink: mostly open (opacity 1), quick close (opacity 0), reopen — natural timing
-  const blink = animate
-    ? {
-        animate: { scaleY: [1, 1, 0.08, 1, 1] },
-        transition: {
-          duration: 5,
-          repeat: Infinity,
-          ease: "easeInOut" as const,
-          times: [0, 0.7, 0.75, 0.8, 1],
-          repeatDelay: 1.5,
-        },
-      }
-    : {};
-
+export function WolfLogo({ size = 64, className }: WolfLogoProps) {
   return (
-    <motion.svg
+    <svg
       width={size}
       height={size}
       viewBox="0 0 64 64"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={cn("text-primary", className)}
-      style={{ willChange: animate ? "transform" : undefined }}
-      {...breathe}
     >
       {/* Wolf head - geometric shapes */}
       <g>
         {/* Left ear */}
-        <motion.polygon
-          points="12,8 20,24 8,24"
-          fill="currentColor"
-          opacity={0.9}
-          {...earL}
-        />
+        <polygon points="12,8 20,24 8,24" fill="currentColor" opacity={0.9} />
 
         {/* Right ear */}
-        <motion.polygon
-          points="52,8 56,24 44,24"
-          fill="currentColor"
-          opacity={0.9}
-          {...earR}
-        />
+        <polygon points="52,8 56,24 44,24" fill="currentColor" opacity={0.9} />
 
         {/* Head main shape - hexagonal */}
         <polygon
@@ -91,30 +43,18 @@ export function WolfLogo({ size = 64, className, animate = true }: WolfLogoProps
           opacity={0.15}
         />
 
-        {/* Left eye - diamond, blinks */}
-        <motion.polygon
+        {/* Left eye - diamond */}
+        <polygon
           points="22,30 26,26 30,30 26,34"
           fill="currentColor"
           className="text-background"
-          style={{ transformOrigin: "26px 30px" }}
-          {...blink}
         />
 
-        {/* Right eye - diamond, blinks with slight offset */}
-        <motion.polygon
+        {/* Right eye - diamond */}
+        <polygon
           points="34,30 38,26 42,30 38,34"
           fill="currentColor"
           className="text-background"
-          style={{ transformOrigin: "38px 30px" }}
-          animate={animate ? { scaleY: [1, 1, 0.08, 1, 1] } : undefined}
-          transition={animate ? {
-            duration: 5,
-            repeat: Infinity,
-            ease: "easeInOut" as const,
-            times: [0, 0.7, 0.75, 0.8, 1],
-            repeatDelay: 1.5,
-            delay: 0.05,
-          } : undefined}
         />
 
         {/* Nose - small triangle */}
@@ -125,7 +65,7 @@ export function WolfLogo({ size = 64, className, animate = true }: WolfLogoProps
           opacity={0.8}
         />
       </g>
-    </motion.svg>
+    </svg>
   );
 }
 
